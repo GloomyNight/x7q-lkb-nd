@@ -1981,7 +1981,7 @@ const GH = {
   load() { try { this.cfg = JSON.parse(localStorage.getItem(GH_LS)); } catch (e) { this.cfg = null; } return this.cfg; },
   url(path) { return `https://api.github.com/repos/${encodeURIComponent(this.cfg.user)}/${encodeURIComponent(this.cfg.repo)}${path}`; },
   api(path, opt = {}) {
-    return fetch(this.url(path), { ...opt, headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: 'Bearer ' + this.cfg.token, ...(opt.body ? { 'Content-Type': 'application/json' } : {}) }, cache: 'no-store' });
+    return fetch(this.url(path), { ...opt, headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: 'Bearer ' + this.cfg.token, ...(opt.body ? { 'Content-Type': 'application/json' } : {}), ...opt.headers }, cache: 'no-store' });
   },
   err(r) { return r.status === 401 ? 'Token ungültig oder abgelaufen' : r.status === 403 ? 'Token ohne Berechtigung (Contents: Read and write)' : r.status === 404 ? 'Repository nicht gefunden oder Token ohne Zugriff darauf' : 'GitHub-Fehler ' + r.status; },
   enc(t) { const b = new TextEncoder().encode(t); let x = ''; for (let i = 0; i < b.length; i += 8192) x += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(x); },
@@ -2045,6 +2045,14 @@ const Store = {
   async ghPull() {
     if (!this.gh || GH.busy || GH.timer || D.saved !== GH.synced) return;
     try { const r = await GH.read(); if (r && r.sha !== GH.sha) { this.ghTake(r); GH.ok = true; setFState(); } } catch (e) {}
+  },
+  // Every 30 s while the app is visible: ask GitHub for the sha of the plan file only (a few bytes) and pull when it differs from ours.
+  async ghPoll() {
+    if (!this.gh || !GH.ok || GH.busy || GH.timer || document.visibilityState !== 'visible' || document.querySelector('dialog[open]') || document.activeElement.matches('input,select,textarea')) return;   // not while the user is typing
+    try {
+      const r = await GH.api('/contents/' + FILE_NAME, { headers: { Accept: 'application/vnd.github.sha' } });
+      if (r.ok && (await r.text()).trim() !== GH.sha) await this.ghPull();
+    } catch (e) {}
   },
   // Connect: the newer state wins (plan on GitHub or what is in this browser); a missing file is created from this browser's plan after asking.
   async ghConnect(first) {
@@ -2654,6 +2662,7 @@ setFState();
     if (Store.dir && await Store.dir.queryPermission({ mode: 'readwrite' }) === 'granted') Store.connect(false);
   } catch (e) { Store.dir = null; }
   if (GH.load()) Store.ghConnect(false);
+  setInterval(() => Store.ghPoll(), 30000);
 })();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});   // installable / offline start (hosted version only)
 </script>
