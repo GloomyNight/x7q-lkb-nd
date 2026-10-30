@@ -352,8 +352,6 @@ dialog h2{font-size:16px;margin:0 0 12px}
 #ghDlg input{width:100%;min-width:0;box-sizing:border-box}
 #ghDlg .hint{overflow-wrap:anywhere}
 .ph .icon.sync.bad{color:var(--danger)}
-.pshop{display:flex;gap:8px;padding:8px 2px 4px}
-.pshop button{flex:1;padding:8px 6px;font-size:13px}
 dialog h3{font-size:12px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .row{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:8px 0}
 .row>span:first-child{color:var(--muted)}
@@ -462,15 +460,13 @@ body.phone #phone{display:flex;flex-direction:column;height:100%;width:100%;max-
     <button id="menuBtn" class="icon" title="Menü" aria-haspopup="true">☰</button>
     <div id="menu" hidden>
       <h4>Aktionen</h4>
-      <button id="shopImpBtn" title="einkauf.json (vom Skill erzeugt) in die Liste „Neu“ übernehmen">Einkauf importieren</button>
-      <input type="file" id="shopImpFile" accept=".json,application/json" hidden>
-      <button id="shopGhBtn" title="einkauf.json aus dem GitHub-Repository in die Liste „Neu“ übernehmen und dort leeren">Einkauf von GitHub holen</button>
-      <button id="shopPasteBtn" title="Einkaufsliste (JSON aus dem Chat) einfügen und in „Neu“ übernehmen">Einkauf einfügen…</button>
+      <button id="shopGhBtn" title="einkauf.json aus dem GitHub-Repository in die Liste „Neu“ übernehmen und dort leeren">Einkauf importieren</button>
       <button id="weekFwd" title="Die laufende Woche wird zur letzten Woche, die nächste zur aktuellen (z. B. Sonntagabend zum Planen)">⏭ Wochenwechsel</button>
       <button id="weekBack" title="Vorgezogenen Wochenwechsel rückgängig machen">⏮ Wochenwechsel zurücknehmen</button>
       <button id="purge" title="Alle abgehakten Einträge sofort löschen (sonst nach 7 Tagen automatisch)">🗑 Abgehakte löschen</button>
       <button id="addList" title="Neue Liste anlegen (erscheint in der Listenspalte, Name direkt eingeben)">+ Neue Liste</button>
       <button id="delList" title="Eine eigene Liste löschen (nur wenn sie leer ist)">− Liste löschen…</button>
+      <button id="shopPasteBtn" title="Einkaufsliste (JSON aus dem Chat) einfügen und in „Neu“ übernehmen">Einkauf einfügen…</button>
       <h4>Ansicht</h4>
       <div class="mrow mline"><small>Farbschema</small><div class="grp seg" id="themeSel"></div></div>
       <div class="mrow mline"><small>Tage</small><div class="grp seg" id="layoutSel" title="Darstellung des Kalenders"></div></div>
@@ -2126,7 +2122,6 @@ function setFState(t, bad) {
   $('fstate').style.color = bad ? 'var(--danger)' : '';
   $('connBtn').hidden = Store.connected || !window.showDirectoryPicker;
   document.querySelectorAll('[data-act="psync"]').forEach(b => { b.classList.toggle('bad', !on.length || !!bad); b.title = $('fstate').textContent; });
-  $('shopGhBtn').hidden = !Store.gh;
   $('ghBtn').textContent = GH.cfg ? 'GitHub-Verbindung…' : 'GitHub verbinden…';
   $('menuBtn').classList.toggle('warn', !on.length || !!bad);
   $('menuBtn').title = 'Menü' + (on.length && !bad ? '' : ' – ' + $('fstate').textContent);
@@ -2397,22 +2392,6 @@ function doShopImport(text, what) {
   if (sh.hints.length) alert('Hinweise zum Import:\n\n• ' + sh.hints.join('\n• '));
   return sh;
 }
-$('shopImpBtn').onclick = async () => {
-  $('menu').hidden = true;
-  let handle = null;
-  try {
-    if (Store.connected && Store.dir) handle = await Store.dir.getFileHandle(SHOP_FILE);
-  } catch (e) { if (e.name !== 'NotFoundError') { alert('Zugriff auf ' + SHOP_FILE + ' fehlgeschlagen: ' + e.message); return; } }
-  if (!handle && window.showOpenFilePicker) {
-    try { [handle] = await showOpenFilePicker({ id: 'einkauf', types: [{ description: 'Einkauf', accept: { 'application/json': ['.json'] } }] }); }
-    catch (e) { if (e.name !== 'AbortError') alert('Datei wählen fehlgeschlagen: ' + e.message); return; }
-  }
-  if (!handle) { $('shopImpFile').value = ''; $('shopImpFile').click(); return; }   // no file API: import only, file is not cleared
-  const sh = doShopImport(await (await handle.getFile()).text(), handle.name);
-  if (!sh) return;
-  try { const w = await handle.createWritable(); await w.write(shopEmpty()); await w.close(); }
-  catch (e) { alert(`Die Einträge sind übernommen, aber ${handle.name} konnte nicht geleert werden (${e.message}).\nNicht noch einmal importieren – sonst entstehen Doppelte.`); }
-};
 // From GitHub: read einkauf.json from the data repository, import, then empty it there (based on the sha we read, so nothing newer is lost).
 async function shopFromGithub() {
   $('menu').hidden = true;
@@ -2436,10 +2415,6 @@ $('shopPasteForm').onsubmit = e => {
   if (a < 0 || b < a) { $('shopPasteErr').textContent = 'Kein JSON gefunden (es fehlen die geschweiften Klammern).'; return; }
   $('shopPasteDlg').close();
   doShopImport(t.slice(a, b + 1), 'Einfügen');
-};
-$('shopImpFile').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  if (doShopImport(await f.text(), f.name)) alert(`${f.name} wurde nicht geleert (Browser ohne Dateizugriff). Nicht noch einmal importieren.`);
 };
 
 // ---------- phone view ----------
@@ -2504,8 +2479,7 @@ function phoneWeek() {
 }
 // Lists tab: one flat list of the lists, named in full ("Diese Woche Mittag", …), no headings.
 function phoneLists() {
-  const bar = `<div class="pshop">${Store.gh ? '<button type="button" data-act="pshopgh" title="einkauf.json aus GitHub holen">⤓ Einkauf holen</button>' : ''}<button type="button" data-act="pshoppaste" title="Einkaufsliste einfügen">Einkauf einfügen</button></div>`;
-  return bar + phoneListItems().map(l => {
+  return phoneListItems().map(l => {
     const ps = piecesAt({ list: l.id }), fd = pfolded('l:' + l.id);
     const cl = containersInList(l.id).filter(c => !c.eaten).map(c => `<div class="pcont${c.eaten ? ' eaten' : ''}"><div class="pct"><span>${esc(c.name)}${c.infinite ? ' ∞' : ''}</span>
           <button type="button" class="padd" data-act="padd" data-loc="${esc(locKey(c.loc))}" title="Inhalt hinzufügen">+</button>${c.eaten || !c.noCheck || c.copy ? `<button type="button" class="padd" data-act="peatcont" data-key="${esc(c.key)}" title="Container und Inhalt abhaken">${c.eaten ? '↺' : '✓'}</button>` : ''}</div>${piecesAt(c.loc, true).map(p => pieceRow(p)).join('')}</div>`).join('');
@@ -2524,9 +2498,11 @@ function renderPhone() {
   const keys = phoneTab === 'week' ? phoneDays().map(d => 'd:' + d) : phoneTab === 'lists' ? phoneListItems().map(l => 'l:' + l.id) : [];
   const anyOpen = phoneTab === 'fav' ? favGroups().some(g => !favFold[g]) : keys.some(k => !phoneFold[k]);
   const foldBtn = phoneTab === 'expiry' ? '' : `<button type="button" class="icon" data-act="pfoldall" title="Alles ${anyOpen ? 'einklappen' : 'ausklappen'}">${anyOpen ? '⊟' : '⊞'}</button>`;
+  const cartIcon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.2 2.2h2l1.5 7.3h7.2l1.4-5.2H3.9"/><circle cx="6" cy="12.8" r="1"/><circle cx="11" cy="12.8" r="1"/></svg>';
   const searchIcon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="6.8" cy="6.8" r="4.3"/><path d="M10 10l4.2 4.2"/></svg>';
   $('phone').innerHTML = `<header class="ph"><b>Essensplan</b>
       <button type="button" class="icon" data-act="pundo" title="Rückgängig"${undoStack.length ? '' : ' disabled'}>↶</button><span class="sp"></span>
+      <button type="button" class="icon" data-act="pshopgh" title="Einkauf importieren" aria-label="Einkauf importieren">${cartIcon}</button>
       <button type="button" class="icon${phoneSearch ? ' on' : ''}" data-act="psearch" title="Suchen" aria-label="Suchen">${searchIcon}</button>${foldBtn}
       <button type="button" class="icon sync${syncOk() ? '' : ' bad'}" data-act="psync" title="${esc($('fstate').textContent)}" aria-label="Speicherung">☁︎</button>
       ${phonePreview ? '<button type="button" data-act="pexit" title="Zurück zur PC-Ansicht">PC-Ansicht</button>' : ''}</header>
@@ -2660,7 +2636,6 @@ $('phone').addEventListener('click', e => {
   if (a) switch (a.dataset.act) {
     case 'psync': $('ghBtn').click(); return;
     case 'pshopgh': shopFromGithub(); return;
-    case 'pshoppaste': openShopPaste(); return;
     case 'psearch': phoneSearch = !phoneSearch; if (!phoneSearch) phoneQ = ''; render(); if (phoneSearch) $('pq').focus(); return;
     case 'pfoldall': {
       if (phoneTab === 'fav') return favFoldClick({ dataset: { act: 'favfoldall' } });
