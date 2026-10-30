@@ -120,6 +120,7 @@ input[type=text],input[type=number],input[type=date],select{background:var(--bg)
 #menu h4.shut::before{content:"▸ "}
 #menu .msec{display:flex;flex-direction:column;gap:6px}
 #menu .msec.shut{display:none}
+#menu > #fstate{display:block;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}   /* always visible, even when "Datei" is folded */
 #menu{max-height:calc(100vh - 70px);overflow:auto}
 #menu > button{text-align:left}
 .seg{gap:0!important}
@@ -2664,7 +2665,7 @@ $('phone').addEventListener('click', e => {
   const KEY = 'essensplan.menufold'; let st = {}; try { st = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
   for (const h of [...$('menu').querySelectorAll(':scope > h4')]) {
     const sec = document.createElement('div'); sec.className = 'msec';
-    while (h.nextElementSibling && h.nextElementSibling.tagName !== 'H4') sec.appendChild(h.nextElementSibling);
+    while (h.nextElementSibling && h.nextElementSibling.tagName !== 'H4' && h.nextElementSibling.id !== 'fstate') sec.appendChild(h.nextElementSibling);   // the storage status stays outside the sections
     h.after(sec);
     const name = h.textContent.trim(), set = v => { h.classList.toggle('shut', v); sec.classList.toggle('shut', v); };
     set(!!st[name]);
