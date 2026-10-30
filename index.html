@@ -352,6 +352,8 @@ dialog h2{font-size:16px;margin:0 0 12px}
 #ghDlg input{width:100%;min-width:0;box-sizing:border-box}
 #ghDlg .hint{overflow-wrap:anywhere}
 .ph .icon.sync.bad{color:var(--danger)}
+.pshop{display:flex;gap:8px;padding:8px 2px 4px}
+.pshop button{flex:1;padding:8px 6px;font-size:13px}
 dialog h3{font-size:12px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .row{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:8px 0}
 .row>span:first-child{color:var(--muted)}
@@ -462,6 +464,8 @@ body.phone #phone{display:flex;flex-direction:column;height:100%;width:100%;max-
       <h4>Aktionen</h4>
       <button id="shopImpBtn" title="einkauf.json (vom Skill erzeugt) in die Liste „Neu“ übernehmen">Einkauf importieren</button>
       <input type="file" id="shopImpFile" accept=".json,application/json" hidden>
+      <button id="shopGhBtn" title="einkauf.json aus dem GitHub-Repository in die Liste „Neu“ übernehmen und dort leeren">Einkauf von GitHub holen</button>
+      <button id="shopPasteBtn" title="Einkaufsliste (JSON aus dem Chat) einfügen und in „Neu“ übernehmen">Einkauf einfügen…</button>
       <button id="weekFwd" title="Die laufende Woche wird zur letzten Woche, die nächste zur aktuellen (z. B. Sonntagabend zum Planen)">⏭ Wochenwechsel</button>
       <button id="weekBack" title="Vorgezogenen Wochenwechsel rückgängig machen">⏮ Wochenwechsel zurücknehmen</button>
       <button id="purge" title="Alle abgehakten Einträge sofort löschen (sonst nach 7 Tagen automatisch)">🗑 Abgehakte löschen</button>
@@ -521,6 +525,14 @@ body.phone #phone{display:flex;flex-direction:column;height:100%;width:100%;max-
   <p class="hint">Privates Repository mit dem Plan (<code>essensplan.json</code>). Der Token (Fine-grained, nur dieses Repository, „Contents: Read and write“) wird nur in diesem Browser gespeichert.</p>
   <p class="err" id="ghErr"></p>
   <div class="btns"><button type="button" id="ghOff" class="danger" hidden>Trennen</button><span class="sp"></span><button type="button" id="ghCancel">Abbrechen</button><button type="submit" class="primary">Verbinden</button></div>
+</form></dialog>
+
+<dialog id="shopPasteDlg"><form id="shopPasteForm" novalidate>
+  <h2>Einkauf einfügen</h2>
+  <p class="hint">Das JSON aus dem Chat hier einfügen (Code-Block-Zeichen davor und danach stören nicht). Alle Einträge landen in „Neu“.</p>
+  <textarea id="shopPasteText" rows="9" spellcheck="false" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px" placeholder='{"format": "einkauf", "version": 1, "items": [ … ]}'></textarea>
+  <p class="err" id="shopPasteErr"></p>
+  <div class="btns"><span class="sp"></span><button type="button" id="shopPasteCancel">Abbrechen</button><button type="submit" class="primary">Übernehmen</button></div>
 </form></dialog>
 
 <dialog id="cntDlg"><form id="cntForm" novalidate>
@@ -1987,14 +1999,23 @@ const GH = {
   enc(t) { const b = new TextEncoder().encode(t); let x = ''; for (let i = 0; i < b.length; i += 8192) x += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(x); },
   dec(c) { const x = atob(c.replace(/\s/g, '')), b = new Uint8Array(x.length); for (let i = 0; i < x.length; i++) b[i] = x.charCodeAt(i); return new TextDecoder().decode(b); },
   // read the plan file: { text, sha }, or null when it does not exist yet; throws { msg } on other errors
-  async read() {
+  async read(name = FILE_NAME) {
     let r;
-    try { r = await this.api('/contents/' + FILE_NAME); } catch (e) { throw { msg: 'keine Verbindung', net: true }; }
+    try { r = await this.api('/contents/' + name); } catch (e) { throw { msg: 'keine Verbindung', net: true }; }
     if (r.status === 404) { const rr = await this.api('').catch(() => null); if (rr && rr.ok) return null; throw { msg: this.err(r) }; }
     if (!r.ok) throw { msg: this.err(r) };
     const j = await r.json();
     if (j.content == null || j.encoding !== 'base64') throw { msg: 'Datei zu groß für den GitHub-Abruf' };   // the contents API sends no content above 1 MB
     return { text: this.dec(j.content), sha: j.sha };
+  },
+  // write any file based on the given sha (null = create); returns 'ok' or 'conflict'; throws { msg } on other errors
+  async putFile(name, text, sha, message) {
+    let r;
+    try { r = await this.api('/contents/' + name, { method: 'PUT', body: JSON.stringify({ message, content: this.enc(text), ...(sha ? { sha } : {}) }) }); }
+    catch (e) { throw { msg: 'keine Verbindung', net: true }; }
+    if (r.status === 409 || r.status === 422) return 'conflict';
+    if (!r.ok) throw { msg: this.err(r) };
+    return 'ok';
   },
   // write the plan file based on this.sha; returns 'ok' or 'conflict'; throws { msg } on other errors
   async put() {
@@ -2105,6 +2126,7 @@ function setFState(t, bad) {
   $('fstate').style.color = bad ? 'var(--danger)' : '';
   $('connBtn').hidden = Store.connected || !window.showDirectoryPicker;
   document.querySelectorAll('[data-act="psync"]').forEach(b => { b.classList.toggle('bad', !on.length || !!bad); b.title = $('fstate').textContent; });
+  $('shopGhBtn').hidden = !Store.gh;
   $('ghBtn').textContent = GH.cfg ? 'GitHub-Verbindung…' : 'GitHub verbinden…';
   $('menuBtn').classList.toggle('warn', !on.length || !!bad);
   $('menuBtn').title = 'Menü' + (on.length && !bad ? '' : ' – ' + $('fstate').textContent);
@@ -2391,6 +2413,30 @@ $('shopImpBtn').onclick = async () => {
   try { const w = await handle.createWritable(); await w.write(shopEmpty()); await w.close(); }
   catch (e) { alert(`Die Einträge sind übernommen, aber ${handle.name} konnte nicht geleert werden (${e.message}).\nNicht noch einmal importieren – sonst entstehen Doppelte.`); }
 };
+// From GitHub: read einkauf.json from the data repository, import, then empty it there (based on the sha we read, so nothing newer is lost).
+async function shopFromGithub() {
+  $('menu').hidden = true;
+  if (!Store.gh) { alert('Erst GitHub verbinden (Menü ☰ bzw. Wolken-Knopf ☁︎).'); return; }
+  let r;
+  try { r = await GH.read(SHOP_FILE); } catch (e) { alert('GitHub: ' + (e.msg || e.message)); return; }
+  if (!r) { toast('Auf GitHub liegt keine ' + SHOP_FILE + '.'); return; }
+  const sh = doShopImport(r.text, SHOP_FILE + ' (GitHub)');
+  if (!sh) return;
+  try { if (await GH.putFile(SHOP_FILE, shopEmpty(), r.sha, 'Einkauf übernommen ' + now()) !== 'ok') throw { msg: 'inzwischen geändert' }; }
+  catch (e) { alert(`Die Einträge sind übernommen, aber ${SHOP_FILE} auf GitHub konnte nicht geleert werden (${e.msg || e.message}).\nNicht noch einmal holen – sonst entstehen Doppelte.`); }
+}
+$('shopGhBtn').onclick = shopFromGithub;
+// Pasted text: cut away code-fence characters and anything outside the outermost { … }.
+function openShopPaste() { $('menu').hidden = true; $('shopPasteText').value = ''; $('shopPasteErr').textContent = ''; $('shopPasteDlg').showModal(); $('shopPasteText').focus(); }
+$('shopPasteBtn').onclick = openShopPaste;
+$('shopPasteCancel').onclick = () => $('shopPasteDlg').close();
+$('shopPasteForm').onsubmit = e => {
+  e.preventDefault();
+  const t = $('shopPasteText').value, a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a < 0 || b < a) { $('shopPasteErr').textContent = 'Kein JSON gefunden (es fehlen die geschweiften Klammern).'; return; }
+  $('shopPasteDlg').close();
+  doShopImport(t.slice(a, b + 1), 'Einfügen');
+};
 $('shopImpFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   if (doShopImport(await f.text(), f.name)) alert(`${f.name} wurde nicht geleert (Browser ohne Dateizugriff). Nicht noch einmal importieren.`);
@@ -2458,7 +2504,8 @@ function phoneWeek() {
 }
 // Lists tab: one flat list of the lists, named in full ("Diese Woche Mittag", …), no headings.
 function phoneLists() {
-  return phoneListItems().map(l => {
+  const bar = `<div class="pshop">${Store.gh ? '<button type="button" data-act="pshopgh" title="einkauf.json aus GitHub holen">⤓ Einkauf holen</button>' : ''}<button type="button" data-act="pshoppaste" title="Einkaufsliste einfügen">Einkauf einfügen</button></div>`;
+  return bar + phoneListItems().map(l => {
     const ps = piecesAt({ list: l.id }), fd = pfolded('l:' + l.id);
     const cl = containersInList(l.id).filter(c => !c.eaten).map(c => `<div class="pcont${c.eaten ? ' eaten' : ''}"><div class="pct"><span>${esc(c.name)}${c.infinite ? ' ∞' : ''}</span>
           <button type="button" class="padd" data-act="padd" data-loc="${esc(locKey(c.loc))}" title="Inhalt hinzufügen">+</button>${c.eaten || !c.noCheck || c.copy ? `<button type="button" class="padd" data-act="peatcont" data-key="${esc(c.key)}" title="Container und Inhalt abhaken">${c.eaten ? '↺' : '✓'}</button>` : ''}</div>${piecesAt(c.loc, true).map(p => pieceRow(p)).join('')}</div>`).join('');
@@ -2612,6 +2659,8 @@ $('phone').addEventListener('click', e => {
   const row = e.target.closest('[data-piece]'), p = row && D.pieces.find(x => x.id === row.dataset.piece);
   if (a) switch (a.dataset.act) {
     case 'psync': $('ghBtn').click(); return;
+    case 'pshopgh': shopFromGithub(); return;
+    case 'pshoppaste': openShopPaste(); return;
     case 'psearch': phoneSearch = !phoneSearch; if (!phoneSearch) phoneQ = ''; render(); if (phoneSearch) $('pq').focus(); return;
     case 'pfoldall': {
       if (phoneTab === 'fav') return favFoldClick({ dataset: { act: 'favfoldall' } });
