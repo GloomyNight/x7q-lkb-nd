@@ -282,6 +282,8 @@ body.phone .stdt td.act .ic,body.phone .stdt td.act .slot{width:24px;margin-left
 .agenda .ah:first-child{border-left:0}
 .pastbtn{border:0;background:none;padding:0 2px;font-size:13px;line-height:1;color:var(--muted);cursor:pointer}
 .pastbtn:hover,.pastbtn.on{color:var(--accent)}
+.agenda .ah:first-child{display:flex;align-items:center}
+.agenda .ah .daysfold{margin-left:auto}   /* fold-all button at the right edge of the date column */
 .agenda .ad{border-bottom:1px solid var(--line);background:var(--head, transparent);padding:7px 6px;white-space:nowrap}
 .agenda .ad small{color:var(--muted)}
 .agenda .ad.today b{color:var(--accent)}
@@ -1351,7 +1353,7 @@ const pastBtn = () => pastToggle() ? `<button type="button" class="pastbtn${D.se
 // The days that are shown in the rows view (past days may be hidden).
 const agendaDays = () => { const t = today(), ds = shownDays(); return D.settings.hidePast && pastToggle() ? ds.filter(d => d >= t) : ds; };
 // Top of the date column: fold / unfold all days (if any is open: fold all).
-const daysFoldBtn = () => { const open = agendaDays().some(d => !fold['day:' + d]); return `<button type="button" class="pastbtn" data-act="daysfold" title="Alle Tage ${open ? 'zuklappen' : 'aufklappen'}">${open ? '⊟' : '⊞'}</button>`; };
+const daysFoldBtn = () => { const open = agendaDays().some(d => !fold['day:' + d]); return `<button type="button" class="pastbtn daysfold" data-act="daysfold" title="Alle Tage ${open ? 'zuklappen' : 'aufklappen'}">${open ? '⊟' : '⊞'}</button>`; };
 function renderAgenda(days, conts, t) {
   if (D.settings.hidePast && pastToggle()) days = days.filter(d => d >= t);
   let h = `<div class="ah">${pastBtn()}${daysFoldBtn()}</div>` + Object.values(MEALS).map(m => `<div class="ah">${m}</div>`).join('');
