@@ -2554,7 +2554,7 @@ $('phoneBtn').onclick = () => setPhonePreview(true);
 window.matchMedia('(max-width: 700px)').addEventListener('change', () => render());
 
 // Phone, Woche tab: "+" first asks where the entry comes from: an existing entry of a list, or a new one.
-let pickTarget = null, pickList = null, pickAdded = 0, pickDone = new Set(), pickSnap = {};
+let pickTarget = null, pickList = null, pickAdded = 0, pickDone = new Set(), pickSnap = {};   // pickSnap[list] = { p: piece ids, c: container keys }
 function putPiece(p, to) {   // same rules as "Verschieben nach": infinite originals give a copy, containers check what they may hold
   if (!canHold(to, food(p.food), p.copy)) { toast(HOLD_MSG); return false; }
   const toInf = to.c && (containerByKey(to.c) || {}).infinite;
@@ -2563,27 +2563,39 @@ function putPiece(p, to) {   // same rules as "Verschieben nach": infinite origi
   return true;
 }
 function openPick(loc) { pickTarget = loc; pickAdded = 0; pickDone = new Set(); pickSnap = {}; pickLists(); $('pickDlg').showModal(); $('pickDlg').scrollTop = 0; }
-function pickLists() {   // empty lists are not offered
+// What a list offers: its entries and (unless the target is itself a container) its containers.
+const pickItems = listId => ({ p: piecesAt({ list: listId }).map(p => p.id), c: pickTarget && pickTarget.c ? [] : containersInList(listId).filter(c => !c.eaten).map(c => c.key) });
+function pickLists() {   // lists without entries and containers are not offered
   $('pickBack').hidden = true;
-  const ls = D.lists.filter(l => piecesAt({ list: l.id }).length || (pickSnap[l.id] || []).length);
+  const items = l => { const x = pickSnap[l.id] || pickItems(l.id); return x.p.length + x.c.length; };
+  const ls = D.lists.filter(l => items(l));
   $('pickBody').innerHTML = `<h2>Hinzufügen</h2><p class="hint">${esc(placeName(pickTarget))}${pickAdded ? ' · ' + pickAdded + ' hinzugefügt' : ''}</p>
     <button type="button" class="primary pnew" data-pick="new">+ Neuer Eintrag</button>
-    <h4 class="pickh">Vorhandenen Eintrag aus einer Liste</h4>` + (ls.map(l => `<button type="button" class="pickrow" data-pick="list" data-id="${l.id}"><span>${esc(l.name)}</span><small>${(pickSnap[l.id] || piecesAt({ list: l.id }).map(p => p.id)).length}</small></button>`).join('') || '<div class="pempty">Keine Liste hat Einträge.</div>');
+    <h4 class="pickh">Vorhandenen Eintrag aus einer Liste</h4>` + (ls.map(l => `<button type="button" class="pickrow" data-pick="list" data-id="${l.id}"><span>${esc(l.name)}</span><small>${items(l)}</small></button>`).join('') || '<div class="pempty">Keine Liste hat Einträge.</div>');
   $('pickDlg').scrollTop = 0;
 }
 // A list opens from its start. Chosen entries stay in the list view, marked, so several can be picked one after the other.
 function pickEntries(listId, keep) {
   pickList = listId; $('pickBack').hidden = false;
-  if (!pickSnap[listId]) pickSnap[listId] = piecesAt({ list: listId }).map(p => p.id);   // snapshot once: entries already added stay visible, marked
-  const ps = pickSnap[listId].map(id => D.pieces.find(p => p.id === id)).filter(Boolean);
+  if (!pickSnap[listId]) pickSnap[listId] = pickItems(listId);   // snapshot once: entries already added stay visible, marked
+  const sn = pickSnap[listId];
+  const ps = sn.p.map(id => D.pieces.find(p => p.id === id)).filter(Boolean);
+  const cs = sn.c.map(k => containerByKey(k)).filter(Boolean);
   $('pickBody').innerHTML = `<h2>${esc(list(listId).name)}</h2><p class="hint">Antippen: zu ${esc(placeName(pickTarget))} hinzufügen${pickAdded ? ' · ' + pickAdded + ' hinzugefügt' : ''}</p>`
-    + (ps.map(p => `<button type="button" class="pickrow${pickDone.has(p.id) ? ' done' : ''}" data-pick="piece" data-pid="${p.id}"><span>${esc(food(p.food).name)}${food(p.food).infinite && !p.copy ? ' ∞' : ''}</span><small>${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</small></button>`).join('') || '<div class="pempty">leer</div>');
+    + (ps.map(p => `<button type="button" class="pickrow${pickDone.has(p.id) ? ' done' : ''}" data-pick="piece" data-pid="${p.id}"><span>${esc(food(p.food).name)}${food(p.food).infinite && !p.copy ? ' ∞' : ''}</span><small>${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</small></button>`).join('')
+      + cs.map(c => `<button type="button" class="pickrow${pickDone.has(c.key) ? ' done' : ''}" data-pick="cont" data-key="${esc(c.key)}"><span>▣ ${esc(c.label)}${c.infinite ? ' ∞' : ''}</span><small>${piecesAt(c.loc).length}</small></button>`).join('')
+      || '<div class="pempty">leer</div>');
   if (!keep) $('pickDlg').scrollTop = 0;
 }
 $('pickBody').onclick = e => {
   const b = e.target.closest('[data-pick]'); if (!b) return;
   if (b.dataset.pick === 'new') { const loc = pickTarget; $('pickDlg').close(); return openAdd(loc, null, !loc.list && !loc.c, !!loc.c); }
   if (b.dataset.pick === 'list') return pickEntries(b.dataset.id);
+  if (b.dataset.pick === 'cont') {   // a whole container with its contents
+    const k = b.dataset.key; if (pickDone.has(k)) return;
+    if (pickTarget.c) return;
+    if (moveContainerTo(k, pickTarget)) { pickAdded++; pickDone.add(k); } pickEntries(pickList, true); return;
+  }
   if (pickDone.has(b.dataset.pid)) return;   // already added
   const p = D.pieces.find(x => x.id === b.dataset.pid); if (!p) return;
   if (putPiece(p, pickTarget)) { pickAdded++; pickDone.add(p.id); persist(); render(); pickEntries(pickList, true); }   // stays open: pick the next entry, ‹ Zurück for another list, Fertig to close
@@ -2626,8 +2638,8 @@ function openContMove(key) {
   $('cmTo').innerHTML = moveOptionsHtml(true); $('contMoveDlg').showModal();
 }
 function moveContainerTo(key, t) {
-  const c = containerByKey(key); if (!c || !t || t.c) return;
-  if (c.list ? t.list === c.list : (!t.list && c.date === t.date && c.meal === t.meal)) return;   // already there
+  const c = containerByKey(key); if (!c || !t || t.c) return false;
+  if (c.list ? t.list === c.list : (!t.list && c.date === t.date && c.meal === t.meal)) return false;   // already there
   if (c.rule && t.list) {   // one occurrence of a series pulled into a list: it becomes a one-off container there, the occurrence leaves the week
     const sg = { id: uid(), name: c.name, list: t.list, content: c.content, updated: now(), ...(c.qty > 1 ? { qty: c.qty } : {}), ...(c.noCheck ? { noCheck: true } : {}) };
     D.singles.push(sg);
@@ -2649,6 +2661,7 @@ function moveContainerTo(key, t) {
   syncContainer(key);
   if (t.list) renumber({ list: t.list });
   persist(); render();
+  return true;
 }
 $('cmTo').onchange = e => { if (!e.target.value) return; const k = CM; $('contMoveDlg').close(); moveContainerTo(k, parseLocKey(e.target.value)); };
 $('cmClose').onclick = () => $('contMoveDlg').close();
