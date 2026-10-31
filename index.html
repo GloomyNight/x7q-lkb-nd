@@ -1348,9 +1348,13 @@ function foldedCellHtml(d, meal, conts, t) {
 // "Vergangene Tage ausblenden": only in the Mo–So view of the current week (the button is in the date column header).
 const pastToggle = () => D.settings.view === 'week' && weekOffset === 0;
 const pastBtn = () => pastToggle() ? `<button type="button" class="pastbtn${D.settings.hidePast ? ' on' : ''}" data-act="hidepast" title="${D.settings.hidePast ? 'Vergangene Tage wieder einblenden' : 'Vergangene Tage ausblenden'}">${D.settings.hidePast ? '⏷' : '⏶'}</button>` : '';
+// The days that are shown in the rows view (past days may be hidden).
+const agendaDays = () => { const t = today(), ds = shownDays(); return D.settings.hidePast && pastToggle() ? ds.filter(d => d >= t) : ds; };
+// Top of the date column: fold / unfold all days (if any is open: fold all).
+const daysFoldBtn = () => { const open = agendaDays().some(d => !fold['day:' + d]); return `<button type="button" class="pastbtn" data-act="daysfold" title="Alle Tage ${open ? 'zuklappen' : 'aufklappen'}">${open ? '⊟' : '⊞'}</button>`; };
 function renderAgenda(days, conts, t) {
   if (D.settings.hidePast && pastToggle()) days = days.filter(d => d >= t);
-  let h = `<div class="ah">${pastBtn()}</div>` + Object.values(MEALS).map(m => `<div class="ah">${m}</div>`).join('');
+  let h = `<div class="ah">${pastBtn()}${daysFoldBtn()}</div>` + Object.values(MEALS).map(m => `<div class="ah">${m}</div>`).join('');
   for (const d of days) {
     const end = d === days[days.length - 1] ? ' dend' : '';   // the last day has no bottom line of its own: the divider above the week lists replaces it
     const fd = !!fold['day:' + d];   // folded day: click on the date; like the week rows, until the page is reloaded
@@ -1624,6 +1628,7 @@ $('grid').addEventListener('click', e => {
   const cell = e.target.closest('[data-drop="cell"]');
   if (a) {
     if (a.dataset.act === 'eat') return eatChip(a.closest('.chip'));
+    if (a.dataset.act === 'daysfold') { const ds = agendaDays(), close = ds.some(d => !fold['day:' + d]); ds.forEach(d => { fold['day:' + d] = close; }); return render(); }
     if (a.dataset.act === 'hidepast') { D.settings.hidePast = !D.settings.hidePast; persist(); return render(); }
     if (a.dataset.act === 'addcell') return openAdd({ date: cell.dataset.date, meal: cell.dataset.meal, c: null }, null, true);
     if (a.dataset.act === 'dayeat') return eatDay(a.dataset.date);
