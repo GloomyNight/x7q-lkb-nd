@@ -291,7 +291,9 @@ body.phone .stdt td.act .ic,body.phone .stdt td.act .slot{width:24px;margin-left
 .agenda .ad.shut b,.agenda .ad.shut small{opacity:.55}
 .agenda .cell.shut{min-height:0;padding:3px 6px}
 .agenda .cell.shut .foldn{padding:2px 0;align-items:center}
-.agenda .foldn i.sq{border-radius:2px}
+.agenda .foldn .cbub{display:inline-flex;align-items:center;gap:2px;padding:1px 3px;border:1px solid color-mix(in srgb, var(--text) 38%, transparent);border-radius:5px;min-height:12px;box-sizing:border-box}
+.agenda .foldn .cbub i{width:8px;height:8px}
+.agenda .foldn .cbub.empty{width:14px;height:14px;padding:0;border-radius:3px}
 .agenda .ad.wk{white-space:normal;padding-top:6px;padding-left:9px;font-size:11px;cursor:pointer;user-select:none}
 .agenda .wkbar{position:absolute;left:0;top:0;bottom:0;width:36px;z-index:2;background:linear-gradient(to right, var(--line) 3px, transparent 3px)}   /* the left area of the cell folds the whole week; 36 px wide, but it lies behind the label (virtual area: the texts do not move) */
 .agenda .wkfold{position:relative;z-index:1;width:fit-content}
@@ -1188,12 +1190,20 @@ function expBubble(ps) {
 }
 // Folded week list (agenda rows): the cell is empty, so a tinted strip with one dot per entry shows that it holds something.
 // Dot colour = expiry marking (red / orange / yellow, else grey); at most 12 dots, the tooltip gives the exact number.
+// Dots of a folded cell / list: one round dot per entry (colour = expiry marking), a container is an outlined group holding the dots of its contents
+// (an empty container: one empty outlined square). The tooltip of a dot names the entry.
+const dotHtml = p => `<i class="${expClass(p.expiry) || 'x-none'}" title="${esc(food(p.food).name)}"></i>`;
+const contBubbleHtml = c => {
+  const ps = piecesAt(c.loc).slice(0, 8);
+  return `<span class="cbub${ps.length ? '' : ' empty'}" title="${esc(c.label)}">${ps.map(dotHtml).join('')}</span>`;
+};
 function foldCount(l) {
   if (!fold[l.id]) return '';
-  const ps = groupsAt({ list: l.id }).concat(virtualGroups(l)).flatMap(g => g.pieces.filter(live));
-  if (!ps.length) return '';
-  const dots = ps.slice(0, 12).map(p => `<i class="${expClass(p.expiry) || 'x-none'}"></i>`).join('') + (ps.length > 12 ? '<em>+</em>' : '');
-  return `<span class="foldn" title="${ps.length} ${ps.length === 1 ? 'Eintrag' : 'Einträge'} (zugeklappt)">${dots}</span>`;
+  const ps = groupsAt({ list: l.id }).concat(virtualGroups(l)).flatMap(g => g.pieces.filter(live)), cs = containersInList(l.id).filter(c => !c.eaten);
+  if (!ps.length && !cs.length) return '';
+  const inside = cs.reduce((n, c) => n + piecesAt(c.loc).length, 0), n = ps.length + inside;
+  const dots = ps.slice(0, 12).map(dotHtml).join('') + (ps.length > 12 ? '<em>+</em>' : '') + cs.map(contBubbleHtml).join('');
+  return `<span class="foldn" title="${n} ${n === 1 ? 'Eintrag' : 'Einträge'}${cs.length ? ', ' + cs.length + (cs.length === 1 ? ' Container' : ' Container') : ''} (zugeklappt)">${dots}</span>`;
 }
 function listBox(l, sub, fixed, label) {
   const gs = groupsAt({ list: l.id }), count = gs.reduce((s, g) => s + g.pieces.length, 0), vs = virtualGroups(l);
@@ -1330,8 +1340,8 @@ function cellHtml(d, meal, conts, t) {
 // A folded day (Layout B): the cell stays a drop target but shows only one dot per entry (round) and per container (square); same colours as the entries.
 function foldedCellHtml(d, meal, conts, t) {
   const here = { date: d, meal, c: null };
-  const dots = groupsAt(here, true).flatMap(g => g.pieces.filter(live)).map(p => `<i class="${expClass(p.expiry) || 'x-none'}"></i>`).join('')
-    + conts.filter(c => c.date === d && c.meal === meal && !c.eaten).map(() => '<i class="sq x-none"></i>').join('');
+  const dots = groupsAt(here, true).flatMap(g => g.pieces.filter(live)).map(dotHtml).join('')
+    + conts.filter(c => c.date === d && c.meal === meal && !c.eaten).map(contBubbleHtml).join('');
   return `<div class="cell shut${d < t ? ' past' : d === t ? ' today' : ''}" data-drop="cell" data-date="${d}" data-meal="${meal}">${dots ? `<span class="foldn">${dots}</span>` : ''}</div>`;
 }
 // Layout B: one row per day, Mittag/Abend as columns, entries side by side.
