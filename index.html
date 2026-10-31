@@ -429,6 +429,7 @@ body.phone #phone{display:flex;flex-direction:column;height:100%;width:100%;max-
 .pcont.once{border-left-color:var(--cont1-bar)}
 .pcont .pr{border:.5px solid #000}
 .pcont.need{outline:2px solid var(--danger);outline-offset:-2px}
+.pcont.eaten .pct span:first-child{text-decoration:line-through;opacity:.6}
 .pct{display:flex;align-items:center;font-weight:600;font-size:14px;padding:4px 2px}
 .pct small{color:var(--muted);font-weight:400}
 .pcont .pr.x-red{background:var(--x-red)}.pcont .pr.x-orange{background:var(--x-orange)}.pcont .pr.x-yellow{background:var(--x-yellow)}
@@ -989,29 +990,38 @@ function copyContainer(c, to) {   // infinite container taken: normal container 
   D.pieces.filter(p => p.loc.c === c.key && !p.eaten).forEach(p => takeCopies(p, loc, 1));
 }
 // Tick a whole day: every piece of the day (lunch and dinner, also inside containers) counts as eaten; again: back.
-function dayState(d) { const ps = D.pieces.filter(p => p.loc.date === d); return ps.length ? (ps.some(p => !p.eaten) ? 'open' : 'done') : ''; }
+// Containers of a day that can be ticked (a "not tickable" container is left out, unless it is a copy).
+const dayConts = d => containersIn(d, d).filter(c => c.date === d && (!c.noCheck || c.copy));
+function dayState(d) {
+  const ps = D.pieces.filter(p => p.loc.date === d), cs = dayConts(d);
+  if (!ps.length && !cs.length) return '';
+  return ps.some(p => !p.eaten) || cs.some(c => !c.eaten) ? 'open' : 'done';
+}
 function dayBtn(d) { const st = dayState(d); return st ? `<button type="button" class="ic dayck" data-act="dayeat" data-date="${d}" title="${st === 'done' ? 'Tag zurückholen' : 'Alle Lebensmittel dieses Tages abhaken'}">${st === 'done' ? '↺' : '✓'}</button>` : ''; }
 function eatDay(d) {
-  const ps = D.pieces.filter(p => p.loc.date === d); if (!ps.length) return;
-  const open = ps.some(p => !p.eaten);
+  const ps = D.pieces.filter(p => p.loc.date === d), cs = dayConts(d); if (!ps.length && !cs.length) return;
+  const open = dayState(d) === 'open';
   ps.forEach(p => { if (open ? !p.eaten : p.eaten) { p.eaten = open ? today() : null; p.updated = now(); } });
+  cs.forEach(c => { if (open ? !c.eaten : c.eaten) setContEaten(c, open); });   // the containers of the day are ticked / un-ticked with it
   persist(); render();
 }
 function eatCont(c) {   // tick a container: it and everything in it counts as eaten (again: back)
   if (!c) return;
+  if (c.eaten ? false : c.noCheck && !c.copy) return;
+  setContEaten(c, !c.eaten); persist(); render();
+}
+function setContEaten(c, on) {   // the container and everything in it; no saving, no redraw
   const ps = D.pieces.filter(p => p.loc.c === c.key);
   const exOf = () => D.exceptions.find(x => x.rule === c.rule.id && x.date === c.orig);
-  if (c.eaten) {
+  if (!on) {
     if (c.single) { delete c.single.eaten; c.single.updated = now(); }
     else { const ex = exOf(); if (ex) { delete ex.eaten; if (!ex.deleted && !ex.to) D.exceptions = D.exceptions.filter(x => x !== ex); } }
     ps.forEach(p => { if (p.eaten) { p.eaten = null; p.updated = now(); } }); }
   else {
-    if (c.noCheck && !c.copy) return;
     ps.forEach(p => { if (!p.eaten) { p.eaten = today(); p.updated = now(); } });
     if (c.single) { c.single.eaten = today(); c.single.updated = now(); }
     else { const ex = exOf(); if (ex) ex.eaten = today(); else D.exceptions.push({ rule: c.rule.id, date: c.orig, deleted: false, to: null, eaten: today() }); }   // series occurrence: remembered as an exception
   }
-  persist(); render();
 }
 function movePiece(g, to, beforePos, n = 1, raw) {
   if (to.c) raw = !!(containerByKey(to.c) || {}).infinite;   // normal container: copies only; infinite container: the original itself moves in
@@ -2477,8 +2487,8 @@ function phoneWeek() {
       const here = { date: d, meal, c: null };
       const body = cs.map(c => {
         const ps = piecesAt({ date: d, meal, c: c.key }, true), st = contStatus(c), need = d >= t && st.lack;
-        return `<div class="pcont${c.rule ? '' : ' once'}${need ? ' need' : ''}"><div class="pct"><span>${esc(c.name)}${st.show ? ` <small>${st.have}/${st.qty}</small>` : ''}</span>
-          <button type="button" class="padd" data-act="ppick" data-loc="${esc(locKey({ date: d, meal, c: c.key }))}" title="Eintrag hinzufügen">+</button><button type="button" class="padd" data-act="pcmove" data-key="${esc(c.key)}" title="Container verschieben">⇄</button></div>${ps.map(p => pieceRow(p)).join('')}</div>`;
+        return `<div class="pcont${c.rule ? '' : ' once'}${need ? ' need' : ''}${c.eaten ? ' eaten' : ''}"><div class="pct"><span>${esc(c.name)}${st.show ? ` <small>${st.have}/${st.qty}</small>` : ''}</span>
+          <button type="button" class="padd" data-act="ppick" data-loc="${esc(locKey({ date: d, meal, c: c.key }))}" title="Eintrag hinzufügen">+</button><button type="button" class="padd" data-act="pcmove" data-key="${esc(c.key)}" title="Container verschieben">⇄</button>${c.eaten || !c.noCheck || c.copy ? `<button type="button" class="padd" data-act="peatcont" data-key="${esc(c.key)}" title="Container und Inhalt abhaken">${c.eaten ? '↺' : '✓'}</button>` : ''}</div>${ps.map(p => pieceRow(p)).join('')}</div>`;
       }).join('') + piecesAt(here, true).map(p => pieceRow(p)).join('');
       return `<div class="pmeal"><div class="pmh">${MEALS[meal]}<button type="button" class="padd" data-act="ppick" data-loc="${esc(locKey(here))}" title="Eintrag hinzufügen">+</button></div>${body || '<div class="pempty">–</div>'}</div>`;
     }).join('')) + '</section>';
@@ -2735,7 +2745,9 @@ $('phone').addEventListener('click', e => {
 $('undo').onclick = undo;
 document.addEventListener('keydown', e => {
   if (document.querySelector('dialog[open]') || e.target.matches('input')) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  // PC: just start typing, the characters go into the search field of the list column (it takes focus; Esc clears it)
+  if (!isPhone() && $('menu').hidden && e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.matches('select,textarea,[contenteditable]')) $('listSearch').focus();
 });
 setInterval(() => { if (!document.querySelector('dialog[open]') && !drag) render(); }, 60000);   // day/week change while open
 render();
