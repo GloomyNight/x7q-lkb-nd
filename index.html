@@ -49,7 +49,7 @@ button.on{background:var(--sel);border-color:var(--sel);font-weight:600}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 button.danger{color:var(--danger)}
 button.ic{padding:0 6px;font-size:12px;line-height:20px}
-input[type=text],input[type=number],input[type=date],select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px 8px}
+input:not([type]),input[type=text],input[type=password],input[type=number],input[type=date],select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px 8px}
 .bar{display:flex;flex-wrap:wrap;gap:6px 6px;align-items:center;background:var(--barbg, var(--surface));border-bottom:1px solid var(--line);padding:6px 10px}
 .bar h1{font-size:16px;margin:0 4px 0 0;white-space:nowrap}
 /* compact toolbar: fits one line in half a screen */
@@ -558,6 +558,12 @@ body.phone #phone{display:flex;flex-direction:column;height:100%;width:100%;max-
   <div class="pickbar"><button type="button" id="pickBack" hidden>‹ Zurück</button><span class="sp"></span><button type="button" id="pickClose" class="primary">Fertig</button></div>
   <div id="pickBody"></div>
 </dialog>
+<dialog id="contMoveDlg">
+  <h2 id="cmHead"></h2><p class="hint" id="cmWhere"></p>
+  <select id="cmTo" style="width:100%;padding:10px;font-size:15px"></select>
+  <div class="btns"><span class="sp"></span><button type="button" id="cmClose">Abbrechen</button></div>
+</dialog>
+
 <dialog id="actDlg">
   <h2 id="actHead"></h2>
   <p class="hint" id="actWhere"></p>
@@ -2472,7 +2478,7 @@ function phoneWeek() {
       const body = cs.map(c => {
         const ps = piecesAt({ date: d, meal, c: c.key }, true), st = contStatus(c), need = d >= t && st.lack;
         return `<div class="pcont${c.rule ? '' : ' once'}${need ? ' need' : ''}"><div class="pct"><span>${esc(c.name)}${st.show ? ` <small>${st.have}/${st.qty}</small>` : ''}</span>
-          <button type="button" class="padd" data-act="ppick" data-loc="${esc(locKey({ date: d, meal, c: c.key }))}" title="Eintrag hinzufügen">+</button></div>${ps.map(p => pieceRow(p)).join('')}</div>`;
+          <button type="button" class="padd" data-act="ppick" data-loc="${esc(locKey({ date: d, meal, c: c.key }))}" title="Eintrag hinzufügen">+</button><button type="button" class="padd" data-act="pcmove" data-key="${esc(c.key)}" title="Container verschieben">⇄</button></div>${ps.map(p => pieceRow(p)).join('')}</div>`;
       }).join('') + piecesAt(here, true).map(p => pieceRow(p)).join('');
       return `<div class="pmeal"><div class="pmh">${MEALS[meal]}<button type="button" class="padd" data-act="ppick" data-loc="${esc(locKey(here))}" title="Eintrag hinzufügen">+</button></div>${body || '<div class="pempty">–</div>'}</div>`;
     }).join('')) + '</section>';
@@ -2483,7 +2489,7 @@ function phoneLists() {
   return phoneListItems().map(l => {
     const ps = piecesAt({ list: l.id }), fd = pfolded('l:' + l.id);
     const cl = containersInList(l.id).filter(c => !c.eaten).map(c => `<div class="pcont${c.eaten ? ' eaten' : ''}"><div class="pct"><span>${esc(c.name)}${c.infinite ? ' ∞' : ''}</span>
-          <button type="button" class="padd" data-act="padd" data-loc="${esc(locKey(c.loc))}" title="Inhalt hinzufügen">+</button>${c.eaten || !c.noCheck || c.copy ? `<button type="button" class="padd" data-act="peatcont" data-key="${esc(c.key)}" title="Container und Inhalt abhaken">${c.eaten ? '↺' : '✓'}</button>` : ''}</div>${piecesAt(c.loc, true).map(p => pieceRow(p)).join('')}</div>`).join('');
+          <button type="button" class="padd" data-act="padd" data-loc="${esc(locKey(c.loc))}" title="Inhalt hinzufügen">+</button><button type="button" class="padd" data-act="pcmove" data-key="${esc(c.key)}" title="Container verschieben">⇄</button>${c.eaten || !c.noCheck || c.copy ? `<button type="button" class="padd" data-act="peatcont" data-key="${esc(c.key)}" title="Container und Inhalt abhaken">${c.eaten ? '↺' : '✓'}</button>` : ''}</div>${piecesAt(c.loc, true).map(p => pieceRow(p)).join('')}</div>`).join('');
     const none = !ps.length && !cl;   // empty list: just its one line, no "leer"
     return `<section class="plist${fd ? ' shut' : ''}${none ? ' none' : ''}"><div class="pmh" data-fold="l:${l.id}">${esc(l.name)}${expBubble(ps)} <small>${ps.length}</small><button type="button" class="padd" data-act="padd" data-loc="${esc(locKey({ list: l.id }))}" title="Eintrag hinzufügen">+</button></div>
       ${fd ? '' : ps.map(p => pieceRow(p)).join('') + cl}</section>`;
@@ -2594,19 +2600,58 @@ function openAct(p) {
   $('actEat').textContent = p.eaten ? 'Nicht gegessen' : '✓ Gegessen'; $('actEat').hidden = !p.eaten && !canEat(p);
   $('actImp').textContent = p.important ? 'Nicht mehr wichtig' : '! Wichtig';
   // order: days of this week, this week's lists, days of next week, next week's lists, all other lists; last week's lists never
-  const cur = curWeek(), conts = containersIn(cur, addDays(cur, 13));
+  $('actTo').innerHTML = moveOptionsHtml(false);
+  $('actDlg').showModal();
+}
+// Destinations of "Verschieben nach …". Order: days of this week, this week's lists, days of next week, next week's lists, all other lists; last week's lists never.
+// noConts: containers are not offered as targets (a container cannot sit inside another one).
+function moveOptionsHtml(noConts) {
+  const cur = curWeek(), conts = noConts ? [] : containersIn(cur, addDays(cur, 13));
   const dayOpts = from => { const r = []; for (let i = 0, d = from; i < 7; i++, d = addDays(d, 1)) for (const meal of Object.keys(MEALS)) {
     r.push([locKey({ date: d, meal, c: null }), fmtDay(d) + ' ' + MEALS[meal]]);
     for (const c of conts.filter(c => c.date === d && c.meal === meal)) r.push([locKey({ date: d, meal, c: c.key }), fmtDay(d) + ' ' + MEALS[meal] + ' · ' + c.label]);
   } return r; };
-  const listOpts = ls => ls.flatMap(l => [[locKey({ list: l.id }), l.name], ...containersInList(l.id).filter(c => !c.eaten).map(c => [locKey(c.loc), l.name + ' · ' + c.label])]);
+  const listOpts = ls => ls.flatMap(l => [[locKey({ list: l.id }), l.name], ...(noConts ? [] : containersInList(l.id).filter(c => !c.eaten).map(c => [locKey(c.loc), l.name + ' · ' + c.label]))]);
   const kinds = ks => ks.map(k => listOf(k));
   const groups = [['Diese Woche – Tage', dayOpts(cur)], ['Diese Woche – Listen', listOpts(kinds(['thisWeekLunch', 'thisWeekDinner', 'thisWeekendLunch', 'thisWeekendDinner']))],
     ['Nächste Woche – Tage', dayOpts(addDays(cur, 7))], ['Nächste Woche – Listen', listOpts(kinds(['nextWeekLunch', 'nextWeekDinner', 'nextWeekendLunch', 'nextWeekendDinner']))],
     ['Weitere Listen', listOpts(D.lists.filter(l => l.kind === 'inbox' || l.kind === 'custom'))]];
-  $('actTo').innerHTML = '<option value="">Verschieben nach …</option>' + groups.map(([t, os]) => `<optgroup label="${esc(t)}">` + os.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('') + '</optgroup>').join('');
-  $('actDlg').showModal();
+  return '<option value="">Verschieben nach …</option>' + groups.map(([t, os]) => `<optgroup label="${esc(t)}">` + os.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('') + '</optgroup>').join('');
 }
+// Move a whole container (phone). Same rules as dragging it on the PC; an infinite container gives a copy, the original stays.
+let CM = null;
+function openContMove(key) {
+  const c = containerByKey(key); if (!c) return;
+  CM = key; $('cmHead').textContent = c.label; $('cmWhere').textContent = 'Jetzt: ' + placeName(c.loc);
+  $('cmTo').innerHTML = moveOptionsHtml(true); $('contMoveDlg').showModal();
+}
+function moveContainerTo(key, t) {
+  const c = containerByKey(key); if (!c || !t || t.c) return;
+  if (c.list ? t.list === c.list : (!t.list && c.date === t.date && c.meal === t.meal)) return;   // already there
+  if (c.rule && t.list) {   // one occurrence of a series pulled into a list: it becomes a one-off container there, the occurrence leaves the week
+    const sg = { id: uid(), name: c.name, list: t.list, content: c.content, updated: now(), ...(c.qty > 1 ? { qty: c.qty } : {}), ...(c.noCheck ? { noCheck: true } : {}) };
+    D.singles.push(sg);
+    D.pieces.forEach(p => { if (p.loc.c === c.key) { p.loc = { list: sg.list, c: 's:' + sg.id }; p.updated = now(); } });
+    const ex = D.exceptions.find(x => x.rule === c.rule.id && x.date === c.orig);
+    if (ex) { ex.deleted = true; ex.to = null; } else D.exceptions.push({ rule: c.rule.id, date: c.orig, deleted: true, to: null });
+  } else if (c.infinite) copyContainer(c, t);
+  else if (c.single) {
+    const sg = c.single;
+    if (t.list) { delete sg.date; delete sg.meal; sg.list = t.list; sg.pos = now(); } else { delete sg.list; delete sg.pos; sg.date = t.date; sg.meal = t.meal; }
+    sg.updated = now();
+  } else {   // series occurrence: only this week's occurrence moves
+    const ex = D.exceptions.find(x => x.rule === c.rule.id && x.date === c.orig);
+    const back = t.date === c.orig && t.meal === c.rule.meal;
+    if (back) { if (ex && ex.eaten) ex.to = null; else if (ex) D.exceptions = D.exceptions.filter(x => x !== ex); }
+    else if (ex) ex.to = { date: t.date, meal: t.meal };
+    else D.exceptions.push({ rule: c.rule.id, date: c.orig, deleted: false, to: { date: t.date, meal: t.meal } });
+  }
+  syncContainer(key);
+  if (t.list) renumber({ list: t.list });
+  persist(); render();
+}
+$('cmTo').onchange = e => { if (!e.target.value) return; const k = CM; $('contMoveDlg').close(); moveContainerTo(k, parseLocKey(e.target.value)); };
+$('cmClose').onclick = () => $('contMoveDlg').close();
 $('actEat').onclick = () => { if (!P.eaten && !canEat(P)) return; P.eaten = P.eaten ? null : today(); P.updated = now(); $('actDlg').close(); persist(); render(); };
 $('actImp').onclick = () => { setImp(P, !P.important); $('actDlg').close(); persist(); render(); };
 $('actTo').onchange = e => {
@@ -2636,6 +2681,7 @@ $('phone').addEventListener('click', e => {
   const row = e.target.closest('[data-piece]'), p = row && D.pieces.find(x => x.id === row.dataset.piece);
   if (a) switch (a.dataset.act) {
     case 'psync': $('ghBtn').click(); return;
+    case 'pcmove': return openContMove(a.dataset.key);
     case 'pshopgh': shopFromGithub(); return;
     case 'psearch': phoneSearch = !phoneSearch; if (!phoneSearch) phoneQ = ''; render(); if (phoneSearch) $('pq').focus(); return;
     case 'pfoldall': {

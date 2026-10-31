@@ -1,6 +1,6 @@
 // Service worker: lets the app start without network. Only the app files are cached; data (GitHub API) is never touched.
 // Online the newest app file wins (network first), offline the cached one is used. Raise VERSION to force a fresh cache.
-const VERSION = 'essensplan-7';
+const VERSION = 'essensplan-8';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
