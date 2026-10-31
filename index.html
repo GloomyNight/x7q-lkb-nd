@@ -286,6 +286,12 @@ body.phone .stdt td.act .ic,body.phone .stdt td.act .slot{width:24px;margin-left
 .agenda .ad small{color:var(--muted)}
 .agenda .ad.today b{color:var(--accent)}
 .agenda .ad.past{color:var(--muted)}
+.agenda .ad[data-day]{cursor:pointer;user-select:none}
+.agenda .ad.shut{padding-top:3px;padding-bottom:3px}
+.agenda .ad.shut b,.agenda .ad.shut small{opacity:.55}
+.agenda .cell.shut{min-height:0;padding:3px 6px}
+.agenda .cell.shut .foldn{padding:2px 0;align-items:center}
+.agenda .foldn i.sq{border-radius:2px}
 .agenda .ad.wk{white-space:normal;padding-top:6px;padding-left:9px;font-size:11px;cursor:pointer;user-select:none}
 .agenda .wkbar{position:absolute;left:0;top:0;bottom:0;width:36px;z-index:2;background:linear-gradient(to right, var(--line) 3px, transparent 3px)}   /* the left area of the cell folds the whole week; 36 px wide, but it lies behind the label (virtual area: the texts do not move) */
 .agenda .wkfold{position:relative;z-index:1;width:fit-content}
@@ -299,11 +305,11 @@ body.phone .stdt td.act .ic,body.phone .stdt td.act .slot{width:24px;margin-left
 .agenda .ad.wk.shut .wn{white-space:nowrap}
 .agenda .ad.wk.shut .wkbtn{display:none}
 .agenda .al.shut{padding:0}
-.agenda .al .foldn{flex:1;display:flex;flex-wrap:wrap;align-content:center;justify-content:flex-start;gap:4px;padding:3px 8px}
+.agenda .foldn{flex:1;display:flex;flex-wrap:wrap;align-content:center;justify-content:flex-start;gap:4px;padding:3px 8px}
 .agenda .al .lst.fold{flex:0 0 auto;margin:0}
-.agenda .al .foldn i{width:10px;height:10px;border-radius:50%;background:var(--chip);border:1px solid color-mix(in srgb, var(--text) 22%, transparent)}   /* same colours as the entries' chips */
-.agenda .al .foldn i.x-red{background:var(--x-red)}.agenda .al .foldn i.x-orange{background:var(--x-orange)}.agenda .al .foldn i.x-yellow{background:var(--x-yellow)}
-.agenda .al .foldn em{font-style:normal;font-size:10px;line-height:10px;color:var(--muted)}
+.agenda .foldn i{width:10px;height:10px;border-radius:50%;background:var(--chip);border:1px solid color-mix(in srgb, var(--text) 22%, transparent)}   /* same colours as the entries' chips */
+.agenda .foldn i.x-red{background:var(--x-red)}.agenda .foldn i.x-orange{background:var(--x-orange)}.agenda .foldn i.x-yellow{background:var(--x-yellow)}
+.agenda .foldn em{font-style:normal;font-size:10px;line-height:10px;color:var(--muted)}
 .agenda .al.shut .lst{margin:0}   /* folded: dimmed instead of a triangle */
 .agenda .ad.wk{position:relative}
 /* all buttons in the date column (day: + and tick, week rows: + and fetch) are the same size, as large as the 84 px column allows; the first sits at the top, the second below it */
@@ -1321,6 +1327,13 @@ function cellHtml(d, meal, conts, t) {
     + groupsAt(here, true).map(g => groupChip(g)).join('')
     + `<button type="button" class="ic add" data-act="addcell" title="Eintrag hinzufügen">+</button></div>`;
 }
+// A folded day (Layout B): the cell stays a drop target but shows only one dot per entry (round) and per container (square); same colours as the entries.
+function foldedCellHtml(d, meal, conts, t) {
+  const here = { date: d, meal, c: null };
+  const dots = groupsAt(here, true).flatMap(g => g.pieces.filter(live)).map(p => `<i class="${expClass(p.expiry) || 'x-none'}"></i>`).join('')
+    + conts.filter(c => c.date === d && c.meal === meal && !c.eaten).map(() => '<i class="sq x-none"></i>').join('');
+  return `<div class="cell shut${d < t ? ' past' : d === t ? ' today' : ''}" data-drop="cell" data-date="${d}" data-meal="${meal}">${dots ? `<span class="foldn">${dots}</span>` : ''}</div>`;
+}
 // Layout B: one row per day, Mittag/Abend as columns, entries side by side.
 // "Vergangene Tage ausblenden": only in the Mo–So view of the current week (the button is in the date column header).
 const pastToggle = () => D.settings.view === 'week' && weekOffset === 0;
@@ -1330,8 +1343,9 @@ function renderAgenda(days, conts, t) {
   let h = `<div class="ah">${pastBtn()}</div>` + Object.values(MEALS).map(m => `<div class="ah">${m}</div>`).join('');
   for (const d of days) {
     const end = d === days[days.length - 1] ? ' dend' : '';   // the last day has no bottom line of its own: the divider above the week lists replaces it
-    h += `<div class="ad${end}${d === t ? ' today' : ''}${d < t ? ' past' : ''}${wday(d) === 0 ? ' mon' : ''}"><b>${WD[wday(d)]}</b> <small>${fmtShort(d)}</small> ${dayBtn(d)}<button type="button" class="ic dadd" data-act="dayadd" data-date="${d}" title="Eintrag hinzufügen (Mittag oder Abend wählen)">+</button></div>`
-      + Object.keys(MEALS).map(meal => cellHtml(d, meal, conts, t).replace('class="cell', 'class="cell' + end)).join('');
+    const fd = !!fold['day:' + d];   // folded day: click on the date; like the week rows, until the page is reloaded
+    h += `<div class="ad${end}${d === t ? ' today' : ''}${d < t ? ' past' : ''}${wday(d) === 0 ? ' mon' : ''}${fd ? ' shut' : ''}" data-day="${d}" title="Klick: ${fd ? 'aufklappen' : 'zuklappen'}"><b>${WD[wday(d)]}</b> <small>${fmtShort(d)}</small> ${dayBtn(d)}<button type="button" class="ic dadd" data-act="dayadd" data-date="${d}" title="Eintrag hinzufügen (Mittag oder Abend wählen)">+</button></div>`
+      + Object.keys(MEALS).map(meal => (fd ? foldedCellHtml(d, meal, conts, t) : cellHtml(d, meal, conts, t)).replace('class="cell', 'class="cell' + end)).join('');
   }
   // Below the days: rows "Letzte Woche", "Diese Woche", "Dieses Wochenende", "Nächste Woche", "Nächstes Wochenende", each with its Mittag and Abend list.
   // The row "Letzte Woche" only appears when one of its lists has content (LI-5).
@@ -1589,6 +1603,8 @@ $('grid').addEventListener('click', e => {
   if (!e.target.closest('.chip, button, [data-act]')) { const bc = e.target.closest('.cont.bare'); if (bc) return openCont(bc.dataset.key); }
   const da = e.target.closest('[data-act="dayadd"]');
   if (da) return openAdd({ date: da.dataset.date, meal: 'lunch', c: null }, null, true, false, true);   // meal is chosen in the dialog      // lists embedded below the days
+  const dd = e.target.closest('.ad[data-day]');
+  if (dd && !e.target.closest('[data-act]')) { fold['day:' + dd.dataset.day] = !fold['day:' + dd.dataset.day]; return render(); }
   const wf = e.target.closest('.wkbar') || e.target.closest('.ad.wk');   // the bar at the left edge folds the whole week (Woche + WE), anywhere else in the cell only this row
   if (wf && !e.target.closest('[data-act]')) {   // fold/unfold the lists together: if one is open, close all
     const ids = wf.dataset.ids.split(' '), close = ids.some(id => !fold[id]);
