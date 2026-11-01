@@ -68,6 +68,9 @@ input:not([type]),input[type=text],input[type=password],input[type=number],input
 .calbox .cg .out.past{opacity:.25}
 .calbox .cg .wk0{background:color-mix(in srgb, var(--accent) 14%, transparent)}
 .calbox .cg .wk1{background:color-mix(in srgb, var(--accent) 6%, transparent)}
+.calbox .cg .wk0,.calbox .cg .wk1{border-radius:0}   /* one continuous bar per week */
+.calbox .cg .mo.wk0,.calbox .cg .mo.wk1{border-radius:6px 0 0 6px}
+.calbox .cg .su.wk0,.calbox .cg .su.wk1{border-radius:0 6px 6px 0}
 .calbox .cg .out.wk0,.calbox .cg .out.wk1{opacity:.6}
 .calbox .cg .today{font-weight:800;opacity:1}
 #calBtn{display:inline-flex;align-items:center;justify-content:center;width:31px;height:26px;padding:0}   /* same size as the ⊟ and ☰ buttons */
@@ -1164,7 +1167,7 @@ function renderCal() {
   let h = `<div class="ch"><button type="button" class="ic" data-cal="-1" title="Vorheriger Monat">‹</button><button type="button" class="cm" data-cal="0" title="Zum aktuellen Monat">${MONTHS[m - 1]} ${y}</button><button type="button" class="ic" data-cal="1" title="Nächster Monat">›</button></div><div class="cg">`;
   h += WD.map((w, i) => `<span class="wd">${w}</span>`).join('');
   for (let i = 0; i < weeks * 7; i++) {
-    const d = addDays(start, i), cls = [d.slice(0, 7) !== calMonth.slice(0, 7) ? 'out' : '', d === t ? 'today' : '', d < t ? 'past' : '', d >= cw && d < nw ? 'wk0' : d >= nw && d < addDays(nw, 7) ? 'wk1' : ''].filter(Boolean).join(' ');
+    const d = addDays(start, i), cls = [d.slice(0, 7) !== calMonth.slice(0, 7) ? 'out' : '', d === t ? 'today' : '', d < t ? 'past' : '', d >= cw && d < nw ? 'wk0' : d >= nw && d < addDays(nw, 7) ? 'wk1' : '', wday(d) === 0 ? 'mo' : wday(d) === 6 ? 'su' : ''].filter(Boolean).join(' ');
     h += `<span class="${cls}" title="${WD[wday(d)]} ${fmtShort(d)}${d.slice(0, 4)}">${+d.slice(8)}</span>`;
   }
   box.innerHTML = h + '</div>';
