@@ -408,7 +408,12 @@ body.phone #phone{display:flex;flex-direction:column;height:100%;width:100%;max-
 .ph button.icon{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:30px}
 .ph button.icon.on{background:var(--sel)}
 .psearch{padding:6px 10px;background:var(--barbg, var(--surface));border-bottom:1px solid var(--line)}
-.psearch input{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:inherit;font:inherit}
+.psearch{display:flex;gap:6px;align-items:center}
+.psearch input::-webkit-search-cancel-button{display:none}
+.psearch .pqclr{flex:none;width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:15px}
+body.phone dialog[open],body.phone dialog[open]>form{display:flex;flex-direction:column}   /* phone: the buttons of a popup sit on top */
+body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2;background:var(--surface)}
+.psearch input{flex:1;min-width:0;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:inherit;font:inherit}
 #phone .psh{display:none !important}
 #pickDlg{width:min(420px,92vw);max-height:80vh;padding:0}
 #pickDlg .pickbar{display:flex;gap:6px;position:sticky;top:0;z-index:2;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
@@ -1728,7 +1733,9 @@ $('addForm').onsubmit = e => {
   }
   else {
     let f = D.foods.find(x => x.name.toLowerCase() === name.toLowerCase());
-    const tc = loc.c ? containerByKey(loc.c) : null, willInf = $('aInf').checked || !!(f && f.infinite);
+    const tc = loc.c ? containerByKey(loc.c) : null;
+    // An existing infinite food added by hand (box not ticked) is a normal instance (copy), not another original; only an infinite container takes the original.
+    const asCopy = !!(f && f.infinite) && !$('aInf').checked && !(tc && tc.infinite), willInf = !asCopy && ($('aInf').checked || !!(f && f.infinite));
     if (tc && !tc.infinite && $('aInf').checked) { $('aErr').textContent = 'Ein unendliches Lebensmittel kommt nicht in einen normalen Container; nimm eine Kopie aus der Liste.'; return; }
     if (tc && tc.infinite && !willInf) { $('aErr').textContent = HOLD_MSG; return; }
     let dates = [...$('aDates').querySelectorAll('input')].map(i => i.value || null);
@@ -1737,7 +1744,7 @@ $('addForm').onsubmit = e => {
     else { if ($('aStd').value) { f.standard = true; f.group = $('aStd').value; } if (dates.length > 1) f.counted = true; f.updated = now(); }
     if ($('aInf').checked) f.infinite = true;      // existing food: only switched on here (switching off: in the entry's dialog)
     if ($('aNoChk').checked) f.noCheck = true;
-    dates.forEach((x, i) => D.pieces.push({ id: uid(), food: f.id, expiry: x, loc: { ...loc }, pos: now() + i, eaten: null, updated: now(), ...($('aImp').checked ? { important: true } : {}) }));
+    dates.forEach((x, i) => D.pieces.push({ id: uid(), food: f.id, expiry: x, loc: { ...loc }, pos: now() + i, eaten: null, updated: now(), ...(asCopy ? { copy: true } : {}), ...($('aImp').checked ? { important: true } : {}) }));
     if (loc.list) renumber(loc);
   }
   $('addDlg').close(); persist(); render();
@@ -2556,7 +2563,7 @@ function renderPhone() {
       <button type="button" class="icon${phoneSearch ? ' on' : ''}" data-act="psearch" title="Suchen" aria-label="Suchen">${searchIcon}</button>${foldBtn}
       <button type="button" class="icon sync${syncOk() ? '' : ' bad'}" data-act="psync" title="${esc($('fstate').textContent)}" aria-label="Speicherung">☁︎</button>
       ${phonePreview ? '<button type="button" data-act="pexit" title="Zurück zur PC-Ansicht">PC-Ansicht</button>' : ''}</header>
-    ${phoneSearch ? `<div class="psearch"><input type="search" id="pq" placeholder="Suchen …" autocomplete="off" value="${esc(phoneQ)}"></div>` : ''}
+    ${phoneSearch ? `<div class="psearch"><input type="search" id="pq" placeholder="Suchen …" autocomplete="off" value="${esc(phoneQ)}"><button type="button" class="pqclr" data-act="pqclear" title="Suche löschen" aria-label="Suche löschen">✕</button></div>` : ''}
     <main class="pbody" id="pbody">${content}</main>
     <nav class="ptabs">${[['week', '📅', 'Woche'], ['lists', '📋', 'Listen'], ['expiry', '⏳', 'Ablauf'], ['fav', '★', 'Favoriten']]
       .map(([k, i, l]) => `<button type="button" class="${phoneTab === k ? 'on' : ''}${k === 'fav' ? fwc : ''}" data-tab="${k}"><span>${i}</span>${l}</button>`).join('')}</nav>`;
@@ -2662,7 +2669,7 @@ function openAct(p) {
 // noConts: containers are not offered as targets (a container cannot sit inside another one).
 function moveOptionsHtml(noConts) {
   const cur = curWeek(), conts = noConts ? [] : containersIn(cur, addDays(cur, 13));
-  const dayOpts = from => { const r = []; for (let i = 0, d = from; i < 7; i++, d = addDays(d, 1)) for (const meal of Object.keys(MEALS)) {
+  const dayOpts = from => { const r = []; for (let i = 0, d = from; i < 7; i++, d = addDays(d, 1)) if (d >= today()) for (const meal of Object.keys(MEALS)) {   // no past days
     r.push([locKey({ date: d, meal, c: null }), fmtDay(d) + ' ' + MEALS[meal]]);
     for (const c of conts.filter(c => c.date === d && c.meal === meal)) r.push([locKey({ date: d, meal, c: c.key }), fmtDay(d) + ' ' + MEALS[meal] + ' · ' + c.label]);
   } return r; };
@@ -2739,6 +2746,7 @@ $('phone').addEventListener('click', e => {
     case 'psync': $('ghBtn').click(); return;
     case 'pcmove': return openContMove(a.dataset.key);
     case 'pshopgh': shopFromGithub(); return;
+    case 'pqclear': phoneQ = ''; render(); $('pq').focus(); return;
     case 'psearch': phoneSearch = !phoneSearch; if (!phoneSearch) phoneQ = ''; render(); if (phoneSearch) $('pq').focus(); return;
     case 'pfoldall': {
       if (phoneTab === 'fav') return favFoldClick({ dataset: { act: 'favfoldall' } });
