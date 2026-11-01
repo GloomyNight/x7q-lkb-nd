@@ -502,6 +502,10 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
       <div class="mrow mline"><small>Hinzufügen</small><select id="addMode"><option value="cell">„+“ in Mittag/Abend</option><option value="date">„+“ in der Datumsspalte</option></select></div>
       <div class="mrow mline"><small>Mindesthöhe je Tag</small><span><input type="number" id="minRows" min="1" max="6" style="width:56px"> Einträge</span></div>
       <button id="phoneBtn" title="Mobil-Ansicht am PC ausprobieren">📱 Mobil-Ansicht</button>
+      <h4>Haltbarkeit</h4>
+      <div class="mrow mline" title="Rot: läuft heute ab. Orange: diese Woche. Gelb: nächste Woche (mit vorgezogenem Wochenwechsel)."><small>Normal</small><span><span class="xb x-orange"></span> diese Woche · <span class="xb x-yellow"></span> nächste Woche</span></div>
+      <div class="mrow mline" title="Für Lebensmittel mit „Lange haltbar“"><small>Lange haltbar</small><span><span class="xb x-orange"></span> <input type="number" id="longOrange" min="1" max="999" style="width:56px"> · <span class="xb x-yellow"></span> <input type="number" id="longYellow" min="1" max="999" style="width:56px"> Tage</span></div>
+      <div class="mrow mline" title="Neue Lebensmittel mit einem Ablaufdatum, das weiter weg liegt, werden automatisch „Lange haltbar“. 0 = nie."><small>Automatisch ab</small><span><input type="number" id="longAuto" min="0" max="60" style="width:56px"> Monaten</span></div>
       <h4>Favoriten</h4>
       <div class="mrow mline"><small>Nachgekauftes in</small><select id="restock"></select></div>
       <div class="mrow"><small>Gruppen</small><div id="favGrpEdit"></div><button type="button" id="favGrpAdd" class="ic">+ Gruppe</button></div>
@@ -637,6 +641,7 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
     <label class="opt"><input type="checkbox" id="gImp" class="chk"><span>Wichtig</span></label>
     <label class="opt" id="gInfRow"><input type="checkbox" id="gInf" class="chk" title="Verbraucht sich nicht; Wegnehmen erzeugt eine Packung (Anzahl 1)"><span>Unendlich</span></label>
     <label class="opt" id="gDivRow"><input type="checkbox" id="gDiv" class="chk" title="Mit Alt-Ziehen lassen sich ½, ⅓, ¼ oder ⅕ einer Packung verschieben"><span>Teilbar</span></label>
+    <label class="opt" id="gLongRow"><input type="checkbox" id="gLong" class="chk" title="Konserven, Trockenware u. Ä.: Farbwarnung nach Tagen (Menü „Haltbarkeit“) statt nach Wochen"><span>Lange haltbar</span></label>
     <label class="opt" id="gNoChkRow"><input type="checkbox" id="gNoChk" class="chk" title="Nur verschieben oder löschen"><span>Nicht abhakbar</span></label>
   </div>
   <p class="hint" id="gCopyHint" hidden>Entnommene Packung eines unendlichen Lebensmittels: normal abhakbar und verschiebbar. „Unendlich“ und „Nicht abhakbar“ stellst du am Original ein.</p>
@@ -716,10 +721,19 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const now = () => Date.now();
 const byExpiry = (a, b) => (a.expiry || '9999') < (b.expiry || '9999') ? -1 : (a.expiry || '9999') > (b.expiry || '9999') ? 1 : 0;
-function expClass(exp) {
+// Red: expires today or is gone. Normal foods: orange = expires in the planning week, yellow = in the week after (curWeek: includes an early week change).
+// Long-life foods (food.longLife, e.g. tins): orange = within settings.longOrange days, yellow = within settings.longYellow days.
+function expClass(exp, f) {
   if (!exp) return '';
-  const d = diffDays(exp, today());
-  return d <= 0 ? 'x-red' : d <= 3 ? 'x-orange' : d <= 7 ? 'x-yellow' : '';
+  if (diffDays(exp, today()) <= 0) return 'x-red';
+  if (f && f.longLife) { const d = diffDays(exp, today()), s = D.settings; return d <= s.longOrange ? 'x-orange' : d <= s.longYellow ? 'x-yellow' : ''; }
+  const w = curWeek();
+  return exp < addDays(w, 7) ? 'x-orange' : exp < addDays(w, 14) ? 'x-yellow' : '';
+}
+// New food: long-life right away when its (earliest) expiry date is further away than settings.longAuto months.
+function autoLong(dates) {
+  const m = D.settings.longAuto, ds = dates.filter(Boolean).sort();
+  return !!m && ds.length === dates.length && ds.length > 0 && ds[0] > addDays(today(), Math.round(m * 30.44));
 }
 
 // ---------- data ----------
@@ -728,7 +742,7 @@ function defaults() {
     .concat([{ id: 'next', name: 'Next', kind: 'custom' }, { id: 'backlog', name: 'Backlog', kind: 'custom' }]);
   return {
     format: FORMAT, version: VERSION, saved: 0, week: monday(today()), manual: null,
-    settings: { view: 'week', restock: 'backlog', layout: 'agenda', minRows: 1, theme: 'standard', fontSize: 100, favGroups: ['Essen', 'Vorrat'] },
+    settings: { view: 'week', restock: 'backlog', layout: 'agenda', minRows: 1, theme: 'standard', fontSize: 100, longAuto: 4, longOrange: 30, longYellow: 60, favGroups: ['Essen', 'Vorrat'] },
     lists, foods: [], pieces: [], rules: [], exceptions: [], singles: []
   };
 }
@@ -814,7 +828,7 @@ function validate(x) {
     // warnAt/alarmAt are optional (default 0): orange at count <= warnAt, red at count <= alarmAt.
     // warnAt/alarmAt: orange/red when fewer than n pieces are left; 0 = no warning (default).
     const th = v => Number.isInteger(v) && v >= 0 && v <= 99 ? v : 0, alarmAt = th(f.alarmAt);
-    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}), ...(f.divisible === true && f.infinite !== true ? { divisible: true } : {}) };
+    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}), ...(f.divisible === true && f.infinite !== true ? { divisible: true } : {}), ...(f.longLife === true ? { longLife: true } : {}) };
   });
   const foodIds = new Set(d.foods.map(f => f.id));
 
@@ -869,7 +883,7 @@ function validate(x) {
   const lw = Number.isInteger(s.listWidth) && s.listWidth >= 200 && s.listWidth <= 900 ? s.listWidth : 300;
   const addMode = s.addMode === 'date' ? 'date' : 'cell';   // optional, default: "+" in the cell
   const marks = ['semi', 'dark', 'dotted', 'accent', 'caps', 'star'];
-  d.settings = { addMode, favMark: marks.includes(s.favMark) ? s.favMark : 'semi', listWidth: lw, favGroups: fg.includes('Essen') ? fg : ['Essen'].concat(fg), fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 80 && s.fontSize <= 140 && s.fontSize % 5 === 0 ? s.fontSize : 100, theme: s.theme === 'blue' ? 'blue' : 'standard', view: s.view === 'today' ? 'today' : 'week', layout: s.layout === 'columns' ? 'columns' : 'agenda', hidePast: s.hidePast === true, minRows: Number.isInteger(s.minRows) && s.minRows >= 1 && s.minRows <= 6 ? s.minRows : 2, restock: listIds.has(s.restock) ? s.restock : d.lists.find(l => l.kind === 'custom')?.id || 'thisWeekLunch' };
+  d.settings = { addMode, favMark: marks.includes(s.favMark) ? s.favMark : 'semi', listWidth: lw, favGroups: fg.includes('Essen') ? fg : ['Essen'].concat(fg), fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 80 && s.fontSize <= 140 && s.fontSize % 5 === 0 ? s.fontSize : 100, theme: s.theme === 'blue' ? 'blue' : 'standard', view: s.view === 'today' ? 'today' : 'week', layout: s.layout === 'columns' ? 'columns' : 'agenda', hidePast: s.hidePast === true, minRows: Number.isInteger(s.minRows) && s.minRows >= 1 && s.minRows <= 6 ? s.minRows : 2, longAuto: Number.isInteger(s.longAuto) && s.longAuto >= 0 && s.longAuto <= 60 ? s.longAuto : 4, longOrange: Number.isInteger(s.longOrange) && s.longOrange >= 1 && s.longOrange <= 999 ? s.longOrange : 30, longYellow: Number.isInteger(s.longYellow) && s.longYellow >= 1 && s.longYellow <= 999 ? s.longYellow : 60, restock: listIds.has(s.restock) ? s.restock : d.lists.find(l => l.kind === 'custom')?.id || 'thisWeekLunch' };
   return d;
 }
 
@@ -1205,7 +1219,7 @@ const planExpired = p => !p.eaten && !!p.expiry && !!p.loc.date && p.expiry > to
 function expRange(ds) { const d = ds.slice().sort(), lo = d[0], hi = d[d.length - 1]; return lo === hi ? fmtShort(lo) : fmtShort(lo) + '–' + fmtShort(hi); }
 function groupChip(g, virt) {
   const f = g.food, n = g.pieces.length, dates = g.pieces.map(p => p.expiry).filter(Boolean);
-  const cls = g.eaten ? 'eaten' : expClass(g.expiry);
+  const cls = g.eaten ? 'eaten' : expClass(g.expiry, g.food);
   const at = virt ? fmtDay(g.loc.date) : '';   // the list (Mittag/Abend column) already says the meal
   const tip = f.name + (virt ? '\nverplant: ' + at + ' ' + MEALS[g.loc.meal] : '') + (g.pieces.some(planExpired) ? '\nLäuft vor dem geplanten Tag ab' : '') + (dates.length ? '\nAblauf: ' + g.pieces.map(p => p.expiry ? fmtShort(p.expiry) + p.expiry.slice(0, 4) : 'ohne Datum').join(', ') : '');
   const imp = !g.eaten && g.pieces.some(p => p.important), xp = g.pieces.some(planExpired);
@@ -1227,14 +1241,14 @@ function virtualGroups(l) {
 }
 // Expiry bubble for a list: red/orange/yellow if a piece in it carries that expiry marking (L-11).
 function expBubble(ps) {
-  const c = ['x-red', 'x-orange', 'x-yellow'].find(k => ps.some(p => live(p) && expClass(p.expiry) === k));
-  return c ? `<span class="xb ${c}" title="${{ 'x-red': 'läuft heute ab oder abgelaufen', 'x-orange': 'läuft in ≤ 3 Tagen ab', 'x-yellow': 'läuft in ≤ 7 Tagen ab' }[c]}"></span>` : '';
+  const c = ['x-red', 'x-orange', 'x-yellow'].find(k => ps.some(p => live(p) && expClass(p.expiry, food(p.food)) === k));
+  return c ? `<span class="xb ${c}" title="${{ 'x-red': 'läuft heute ab oder abgelaufen', 'x-orange': 'läuft diese Woche ab (lange haltbar: bald)', 'x-yellow': 'läuft nächste Woche ab (lange haltbar: später)' }[c]}"></span>` : '';
 }
 // Folded week list (agenda rows): the cell is empty, so a tinted strip with one dot per entry shows that it holds something.
 // Dot colour = expiry marking (red / orange / yellow, else grey); at most 12 dots, the tooltip gives the exact number.
 // Dots of a folded cell / list: one round dot per entry (colour = expiry marking), a container is an outlined group holding the dots of its contents
 // (an empty container: one empty outlined square). The tooltip of a dot names the entry.
-const dotHtml = p => `<i class="${expClass(p.expiry) || 'x-none'}" title="${esc(food(p.food).name)}"></i>`;
+const dotHtml = p => `<i class="${expClass(p.expiry, food(p.food)) || 'x-none'}" title="${esc(food(p.food).name)}"></i>`;
 const contBubbleHtml = c => {
   const ps = piecesAt(c.loc).slice(0, 8);
   return `<span class="cbub${ps.length ? '' : ' empty'}" title="${esc(c.label)}">${ps.map(dotHtml).join('')}</span>`;
@@ -1321,7 +1335,7 @@ function expiryBox() {
   const ps = expiringPieces(), where = p => p.loc.list ? list(p.loc.list).name : fmtDay(p.loc.date) + ' ' + MEALS[p.loc.meal];
   return `<div class="lst gen${fold.expiry ? ' fold' : ''}" data-gen="expiry">
     <div class="lh"><span class="nm" data-act="foldgen" title="Automatisch erzeugt: alle Packungen mit Ablaufdatum">${fold.expiry ? '▸' : '▾'} Ablauf${expBubble(ps)}</span><span class="cnt">${ps.length}</span></div>
-    <div class="lb">${ps.map(p => `<div class="chip xrow ${expClass(p.expiry)}${p.important ? ' imp' : ''}" data-piece="${p.id}" title="${esc(food(p.food).name + ' · ' + where(p))}">
+    <div class="lb">${ps.map(p => `<div class="chip xrow ${expClass(p.expiry, food(p.food))}${p.important ? ' imp' : ''}" data-piece="${p.id}" title="${esc(food(p.food).name + ' · ' + where(p))}">
       <span class="t">${esc(food(p.food).name)}<small class="pw">${esc(where(p))}</small></span><span class="d">${fmtShort(p.expiry) + p.expiry.slice(2, 4)}</span>
       ${canEat(p) ? '<button type="button" class="ck" data-act="peat1" title="Gegessen">✓</button>' : ''}</div>`).join('') || '<div class="empty">keine</div>'}</div></div>`;
 }
@@ -1359,13 +1373,13 @@ function standardOverview(noHead) {
     const lv = favLevel(f), g = f.group || 'Essen';
     // Only one row (one place + date): shown directly in the favourite's line instead of a second line.
     const all = [...rows.values()], one = all[0] || null;   // first place/date row sits in the favourite's own line
-    const cells = ({ p, n }, inHead) => `<td class="w el${inHead ? ' ' + expClass(p.expiry) : ''}" data-act="favrow" data-pid="${p.id}" title="Eintrag öffnen">${esc(where(p))}${n > 1 ? ` ×${n}` : ''}${inHead && lv ? ' · wenig – nachkaufen' : ''}</td><td class="d el${inHead ? ' ' + expClass(p.expiry) : ''}" data-act="favrow" data-pid="${p.id}">${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</td>`;
+    const cells = ({ p, n }, inHead) => `<td class="w el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}" title="Eintrag öffnen">${esc(where(p))}${n > 1 ? ` ×${n}` : ''}${inHead && lv ? ' · wenig – nachkaufen' : ''}</td><td class="d el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}">${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</td>`;
     const tick = r => `<button type="button" class="ic" data-act="feat" data-pid="${r.p.id}" title="Eine Packung abhaken (gegessen)">✓</button>`;
     const head = g !== lastGrp ? grpHead(g) : ''; lastGrp = g;
     return head + `<tbody class="fav${lv ? ' lv-' + lv : ''}" draggable="true" data-fav="${f.id}" data-g="${esc(g)}"${favFold[g] ? ' hidden' : ''}><tr class="fh"><td class="cnt">${ps.length}</td><td class="t"><a href="#" data-act="favedit" data-food="${f.id}" title="Einstellungen: Gruppe, Warnschwellen">${esc(f.name)}</a></td>
       ${one ? cells(one, true) : `<td colspan="2" class="w"></td>`}
       <td class="act">${one ? tick(one) : '<span class="slot"></span>'}<button type="button" class="ic" data-act="restock" data-food="${f.id}" title="Nachgekauft: Packung eintragen">+</button></td></tr>`
-      + all.slice(1).map(r => `<tr class="fp ${expClass(r.p.expiry)}"><td class="cnt"></td><td></td>${cells(r)}<td class="act">${tick(r)}<span class="slot"></span></td></tr>`).join('')
+      + all.slice(1).map(r => `<tr class="fp ${expClass(r.p.expiry, food(r.p.food))}"><td class="cnt"></td><td></td>${cells(r)}<td class="act">${tick(r)}<span class="slot"></span></td></tr>`).join('')
       + '</tbody>';
   }).join('') + '</table></div>';
 }
@@ -1775,7 +1789,7 @@ $('addForm').onsubmit = e => {
     if (tc && tc.infinite && !willInf) { $('aErr').textContent = HOLD_MSG; return; }
     let dates = [...$('aDates').querySelectorAll('input')].map(i => i.value || null);
     if (willInf) dates = dates.slice(0, 1);   // infinite: one piece, one date
-    if (!f) { f = { id: uid(), name, counted: dates.length > 1, standard: !!$('aStd').value, warnAt: 0, alarmAt: 0, group: $('aStd').value || 'Essen', updated: now() }; D.foods.push(f); }
+    if (!f) { f = { id: uid(), name, counted: dates.length > 1, standard: !!$('aStd').value, warnAt: 0, alarmAt: 0, group: $('aStd').value || 'Essen', updated: now(), ...(autoLong(dates) ? { longLife: true } : {}) }; D.foods.push(f); }
     else { if ($('aStd').value) { f.standard = true; f.group = $('aStd').value; } if (dates.length > 1) f.counted = true; f.updated = now(); }
     if ($('aInf').checked) f.infinite = true;      // existing food: only switched on here (switching off: in the entry's dialog)
     if ($('aNoChk').checked) f.noCheck = true;
@@ -1803,8 +1817,8 @@ function openGroup(g) {
   $('gLoc').innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(''); $('gLoc').value = here;
   $('gFav').innerHTML = '<option value="">kein Favorit</option>' + favGroups().map(x => `<option value="${esc(x)}">Favorit · ${esc(x)}</option>`).join('');
   $('gFav').value = g.food.standard ? (g.food.group || 'Essen') : '';
-  $('gImp').checked = g.pieces.some(p => p.important); $('gInf').checked = !!g.food.infinite; $('gNoChk').checked = !!g.food.noCheck; $('gDiv').checked = !!g.food.divisible;
-  $('gInfRow').hidden = $('gNoChkRow').hidden = $('gDivRow').hidden = !!g.copy; $('gCopyHint').hidden = !g.copy;
+  $('gImp').checked = g.pieces.some(p => p.important); $('gInf').checked = !!g.food.infinite; $('gNoChk').checked = !!g.food.noCheck; $('gDiv').checked = !!g.food.divisible; $('gLong').checked = !!g.food.longLife;
+  $('gInfRow').hidden = $('gNoChkRow').hidden = $('gDivRow').hidden = $('gLongRow').hidden = !!g.copy; $('gCopyHint').hidden = !g.copy;
   $('gEat').textContent = g.eaten ? 'Alle zurückholen' : 'Alle abhaken';
   renderGroupRows(); $('grpDlg').showModal();
 }
@@ -1842,7 +1856,9 @@ $('grpForm').onsubmit = e => {
     const wasInf = !!f.infinite;
     if ($('gInf').checked) f.infinite = true; else delete f.infinite;
     if ($('gNoChk').checked) f.noCheck = true; else delete f.noCheck;
-    if ($('gDiv').checked && !f.infinite) f.divisible = true; else delete f.divisible;    if (wasInf && !f.infinite) D.pieces.forEach(p => { if (p.food === f.id) delete p.copy; });   // no copies without an infinite food
+    if ($('gDiv').checked && !f.infinite) f.divisible = true; else delete f.divisible;
+    if ($('gLong').checked) f.longLife = true; else delete f.longLife;
+       if (wasInf && !f.infinite) D.pieces.forEach(p => { if (p.food === f.id) delete p.copy; });   // no copies without an infinite food
   }
   f.name = name; f.standard = !!$('gFav').value; if (f.standard) f.group = $('gFav').value; f.updated = now();
   const imp = $('gImp').checked;
@@ -1966,7 +1982,7 @@ function renderMenuSettings() {
   $('favMark').value = D.settings.favMark || 'semi';
   const ahead = D.week > monday(today());
   $('weekFwd').hidden = ahead; $('weekBack').hidden = !ahead;
-  $('fontSize').value = D.settings.fontSize; $('minRows').value = D.settings.minRows;
+  $('longOrange').value = D.settings.longOrange; $('longYellow').value = D.settings.longYellow; $('longAuto').value = D.settings.longAuto; $('fontSize').value = D.settings.fontSize; $('minRows').value = D.settings.minRows;
   $('restock').innerHTML = D.lists.map(l => `<option value="${l.id}"${D.settings.restock === l.id ? ' selected' : ''}>${esc(l.name)}</option>`).join('');
   renderFavGroups();
 }
@@ -2038,6 +2054,8 @@ $('weekBack').onclick = () => {
 $('addMode').onchange = e => { D.settings.addMode = e.target.value; persist(); render(); };
 $('favMark').onchange = e => { D.settings.favMark = e.target.value; persist(); render(); };
 $('restock').onchange = e => { D.settings.restock = e.target.value; persist(); };
+const intIn = (el, lo, hi, key) => { el.onchange = () => { const v = Math.floor(+el.value); if (Number.isFinite(v) && v >= lo && v <= hi) D.settings[key] = v; el.value = D.settings[key]; if (key === 'longOrange' && D.settings.longYellow < v) D.settings.longYellow = v; persist(); render(); }; };
+intIn($('longOrange'), 1, 999, 'longOrange'); intIn($('longYellow'), 1, 999, 'longYellow'); intIn($('longAuto'), 0, 60, 'longAuto');
 $('fontSize').onchange = e => { D.settings.fontSize = +e.target.value; persist(); render(); };
 $('minRows').onchange = e => { D.settings.minRows = Math.max(1, Math.min(6, +e.target.value || 2)); e.target.value = D.settings.minRows; persist(); render(); };
 $('addList').onclick = () => {
@@ -2295,7 +2313,7 @@ function shopRow({ f, ps }, used, hide) {
   const where = whereShort;
   const m = new Map();
   for (const p of ps) { const k = where(p) + '|' + (p.expiry || ''); if (!m.has(k)) m.set(k, { p, n: 0 }); m.get(k).n++; }
-  const all = [...m.values()], dc = p => used ? '' : expClass(p.expiry);
+  const all = [...m.values()], dc = p => used ? '' : expClass(p.expiry, food(p.food));
   const cells = r => r ? `<td class="w">${esc(where(r.p))}${r.n > 1 ? ` ×${r.n}` : ''}</td><td class="d ${dc(r.p)}">${r.p.expiry ? fmtShort(r.p.expiry) + r.p.expiry.slice(2, 4) : ''}</td>` : '<td class="w"></td><td class="d"></td>';
   return `<tbody class="fav${lv ? ' lv-' + lv : ''}${used ? ' used' : ''}"${hide ? ' hidden' : ''}><tr class="fh"><td class="cnt">${ps.length}</td><td class="t">${esc(f.name)}</td>${cells(all[0])}
     <td class="buy"><button type="button" class="ic" data-act="buym" data-food="${f.id}"${f.buy ? '' : ' disabled'}>−</button><span class="bn${f.buy ? ' on' : ''}">${f.buy || 0}</span><button type="button" class="ic" data-act="buyp" data-food="${f.id}">+</button></td></tr>`
@@ -2466,7 +2484,7 @@ function applyShop(sh) {
   let n = 0;
   for (const it of sh.items) {
     let f = D.foods.find(x => x.name.toLowerCase() === it.name.toLowerCase());
-    if (!f) { f = { id: uid(), name: it.name, counted: it.expiry.length > 1, standard: false, warnAt: 0, alarmAt: 0, group: 'Essen', updated: now() }; D.foods.push(f); }
+    if (!f) { f = { id: uid(), name: it.name, counted: it.expiry.length > 1, standard: false, warnAt: 0, alarmAt: 0, group: 'Essen', updated: now(), ...(autoLong(it.expiry) ? { longLife: true } : {}) }; D.foods.push(f); }
     else { if (it.expiry.length > 1) f.counted = true; f.updated = now(); }
     it.expiry.forEach((x, i) => D.pieces.push({ id: uid(), food: f.id, expiry: x, loc: { ...loc }, pos: now() + n + i, eaten: null, updated: now() }));
     n += it.expiry.length;
@@ -2527,7 +2545,7 @@ const placeName = loc => loc.list ? list(loc.list).name + (loc.c && containerByK
   : fmtDay(loc.date) + ' ' + MEALS[loc.meal] + (loc.c && containerByKey(loc.c) ? ' · ' + containerByKey(loc.c).label : '');
 
 function pieceRow(p, showPlace) {
-  const f = food(p.food), cls = p.eaten ? 'eaten' : expClass(p.expiry);
+  const f = food(p.food), cls = p.eaten ? 'eaten' : expClass(p.expiry, f);
   return `<div class="pr ${cls}${p.important && !p.eaten ? ' imp' : ''}${planExpired(p) ? ' xplan' : ''}" data-piece="${p.id}">
     ${p.eaten || canEat(p) ? `<button type="button" class="pck" data-act="peat" title="${p.eaten ? 'Nicht gegessen' : 'Gegessen'}">${p.eaten ? '↺' : '✓'}</button>` : '<span class="pck"></span>'}
     <span class="pn">${f.standard ? `<span class="fvn">${esc(f.name)}</span>` : esc(f.name)}${f.infinite && !p.copy ? ' ∞' : ''}${p.part ? ' ' + partLabel(p.part) : ''}${showPlace ? `<small class="pw">${esc(placeName(p.loc))}</small>` : ''}</span>
