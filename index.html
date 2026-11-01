@@ -506,6 +506,7 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
       <div class="mrow mline" title="Rot: läuft heute ab. Orange: diese Woche. Gelb: nächste Woche (mit vorgezogenem Wochenwechsel)."><small>Normal</small><span><span class="xb x-orange"></span> diese Woche · <span class="xb x-yellow"></span> nächste Woche</span></div>
       <div class="mrow mline" title="Für Lebensmittel mit „Lange haltbar“"><small>Lange haltbar</small><span><span class="xb x-orange"></span> <input type="number" id="longOrange" min="1" max="999" style="width:56px"> · <span class="xb x-yellow"></span> <input type="number" id="longYellow" min="1" max="999" style="width:56px"> Tage</span></div>
       <div class="mrow mline" title="Neue Lebensmittel mit einem Ablaufdatum, das weiter weg liegt, werden automatisch „Lange haltbar“. 0 = nie."><small>Automatisch ab</small><span><input type="number" id="longAuto" min="0" max="60" style="width:56px"> Monaten</span></div>
+      <button id="longApply" title="Vorhandene Lebensmittel, deren frühestes Ablaufdatum weiter weg liegt als die Automatik-Grenze, auf „Lange haltbar“ stellen">Vorhandene prüfen …</button>
       <h4>Favoriten</h4>
       <div class="mrow mline"><small>Nachgekauftes in</small><select id="restock"></select></div>
       <div class="mrow"><small>Gruppen</small><div id="favGrpEdit"></div><button type="button" id="favGrpAdd" class="ic">+ Gruppe</button></div>
@@ -2055,6 +2056,17 @@ $('addMode').onchange = e => { D.settings.addMode = e.target.value; persist(); r
 $('favMark').onchange = e => { D.settings.favMark = e.target.value; persist(); render(); };
 $('restock').onchange = e => { D.settings.restock = e.target.value; persist(); };
 const intIn = (el, lo, hi, key) => { el.onchange = () => { const v = Math.floor(+el.value); if (Number.isFinite(v) && v >= lo && v <= hi) D.settings[key] = v; el.value = D.settings[key]; if (key === 'longOrange' && D.settings.longYellow < v) D.settings.longYellow = v; persist(); render(); }; };
+// One-off helper: existing foods that would be long-life by the automatic rule (all their live pieces dated, earliest date beyond the limit).
+$('longApply').onclick = () => {
+  if (!D.settings.longAuto) { alert('Die Automatik ist aus (Monate = 0).'); return; }
+  const hit = D.foods.filter(f => !f.longLife && !f.infinite && autoLong(D.pieces.filter(p => p.food === f.id && live(p)).map(p => p.expiry)));
+  if (!hit.length) { alert('Keine passenden Lebensmittel gefunden.'); return; }
+  if (!confirm(`${hit.length} Lebensmittel auf „Lange haltbar“ stellen?
+
+` + hit.map(f => f.name).sort((x, y) => x.localeCompare(y, 'de')).join(', '))) return;
+  hit.forEach(f => { f.longLife = true; f.updated = now(); });
+  persist(); render();
+};
 intIn($('longOrange'), 1, 999, 'longOrange'); intIn($('longYellow'), 1, 999, 'longYellow'); intIn($('longAuto'), 0, 60, 'longAuto');
 $('fontSize').onchange = e => { D.settings.fontSize = +e.target.value; persist(); render(); };
 $('minRows').onchange = e => { D.settings.minRows = Math.max(1, Math.min(6, +e.target.value || 2)); e.target.value = D.settings.minRows; persist(); render(); };
