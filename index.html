@@ -155,6 +155,7 @@ body.colresize,body.colresize *{cursor:col-resize!important;user-select:none}
 .dropzone{outline:2px dashed var(--accent);outline-offset:-2px}
 .lst.dropzone{outline-offset:2px}
 .chip.before,.cont.before{box-shadow:0 -2px 0 var(--accent)}
+.cell > .chip.before{box-shadow:-3px 0 0 var(--accent)}
 .lst.ins-before{box-shadow:0 -3px 0 var(--accent)}
 .lst.ins-after{box-shadow:0 3px 0 var(--accent)}
 .bar .ahead{color:var(--warnc);font-weight:600;margin-left:6px}
@@ -933,7 +934,7 @@ const isCopy = p => !!p.copy && !!food(p.food).infinite;
 const canEat = p => { const f = food(p.food); return !f.noCheck || isCopy(p); };
 function takeCopies(src, to, n, beforePos) {
   for (let i = 0; i < n; i++) D.pieces.push({ id: uid(), food: src.food, expiry: src.expiry, loc: { ...to }, pos: beforePos != null ? beforePos - 0.5 + i / 1000 : now() + i, eaten: null, updated: now(), copy: true, ...(src.important ? { important: true } : {}) });
-  if (to.list || to.c) renumber(to);
+  renumber(to);
 }
 function groupsAt(loc, withEaten) {
   const k = locKey(loc), m = new Map();
@@ -1043,7 +1044,7 @@ function movePiece(g, to, beforePos, n = 1, raw) {
   if (g.food.infinite && !g.copy && !raw) { const src = g.pieces.filter(live).sort(byExpiry)[0]; if (src) takeCopies(src, to, n, beforePos); return; }   // infinite original: take copies, original stays
   const ps = g.pieces.filter(live).sort(byExpiry).slice(0, n); if (!ps.length) return;
   ps.forEach((p, i) => { p.loc = { ...to }; p.updated = now(); p.pos = beforePos != null ? beforePos - 0.5 + i / 1000 : now() + i; });
-  if (to.list || to.c) renumber(to);
+  renumber(to);
 }
 // Ask how many pieces to move (Alt+drag).
 function askCount(g) {
@@ -1471,8 +1472,8 @@ document.addEventListener('dragover', e => {
   const t = dropTarget(e.target); clearHl();
   if (!accepts(t)) return;
   e.preventDefault(); e.dataTransfer.dropEffect = 'move';
-  const chip = e.target.closest('.lb > .chip'), over = e.target.closest('.lb > .chip, .lb > .cont');
-  if (drag.kind === 'group' && t.loc.list && !t.loc.c && chip && chip !== drag.el) { chip.classList.add('before'); hl.push(chip); }
+  const chip = e.target.closest('.lb > .chip, .cell > .chip'), over = e.target.closest('.lb > .chip, .lb > .cont');
+  if (drag.kind === 'group' && !t.loc.c && chip && chip !== drag.el) { chip.classList.add('before'); hl.push(chip); }   // list or day cell: the entry goes before this one
   else if (drag.kind === 'group' && t.loc.c && e.target.closest('.cont .chip') && e.target.closest('.cont .chip') !== drag.el && e.target.closest('.cont .chip').closest('.cont').dataset.key === t.loc.c) { const cc = e.target.closest('.cont .chip'); cc.classList.add('before'); hl.push(cc); }
   else if (drag.kind === 'cont' && t.loc.list && over && over !== drag.el.closest('.cont')) { over.classList.add('before'); hl.push(over); }
   else if (drag.kind === 'list') {   // line above or below the target list, depending on the mouse position
@@ -1528,12 +1529,12 @@ document.addEventListener('drop', e => {
     syncContainer(d.key);
     if (t.loc.list) renumber({ list: t.loc.list });
   } else if (d.kind === 'group' && d.g) {
-    const chip = e.target.closest('.lb > .chip'), cchip = e.target.closest('.cont .chip');
+    const chip = e.target.closest('.lb > .chip, .cell > .chip'), cchip = e.target.closest('.cont .chip');
     const inCont = !!t.loc.c && cchip && cchip !== d.el && cchip.closest('.cont') && cchip.closest('.cont').dataset.key === t.loc.c;   // dropped onto an entry inside the target container
-    const before = inCont ? +cchip.dataset.pos : (t.loc.list && !t.loc.c && chip && chip !== d.el ? +chip.dataset.pos : null);
+    const before = inCont ? +cchip.dataset.pos : (!t.loc.c && chip && chip !== d.el ? +chip.dataset.pos : null);
     if (d.g.eaten) return;
     if (!canHold(t.loc, d.g.food, d.g.copy)) { toast(HOLD_MSG); return; }
-    if (sameLoc(d.g.loc, t.loc)) { if (t.loc.list || t.loc.c) reorderGroup(d.g, before); else return; }
+    if (sameLoc(d.g.loc, t.loc)) reorderGroup(d.g, before);   // list, container or day cell: manual order
     else if (e.ctrlKey || e.metaKey) {                                        // Ctrl: the whole group (infinite original: the original itself)
       const inf = d.g.food.infinite && !d.g.copy;
       movePiece(d.g, t.loc, before, inf ? 1 : d.g.pieces.filter(live).length, inf);
