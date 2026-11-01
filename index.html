@@ -192,6 +192,9 @@ body.fm-star .chip.std .t::after,body.fm-star .fvn::after{content:" ★";color:v
 /* planned for a day after its expiry date (still fine today): the expiry date is shown bold and red */
 .chip.xplan .d:not(.at),.pr.xplan .pd{color:color-mix(in srgb, var(--danger) 86%, var(--surface));font-weight:600}
 input.chk{width:auto;justify-self:start;margin:0}
+.opts{display:flex;flex-wrap:wrap;gap:6px 8px;margin:6px 0}
+.opt{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.opt:has(input:checked){border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, transparent)}
 .chip.eaten .t{text-decoration:line-through}
 .chip.xrow .t small{display:block;font-size:11px;color:var(--muted);font-style:normal}
 .lst.gen .lh{cursor:default}
@@ -627,10 +630,12 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
   <label class="row"><span>Liste</span><select id="gLoc" title="Liste wählen = alle Packungen hier dorthin verschieben"></select></label>
   <div class="row"><span>Packung</span><div id="gPieces"></div></div>
   <label class="row"><span>Favorit</span><select id="gFav"></select></label>
-  <label class="row"><span>Wichtig</span><input type="checkbox" id="gImp" class="chk"></label>
-  <label class="row" id="gInfRow"><span>Unendlich</span><input type="checkbox" id="gInf" class="chk" title="Verbraucht sich nicht; Wegnehmen erzeugt eine Packung (Anzahl 1)"></label>
-  <label class="row" id="gDivRow"><span>Teilbar</span><input type="checkbox" id="gDiv" class="chk" title="Mit Alt-Ziehen lassen sich ½, ⅓, ¼ oder ⅕ einer Packung verschieben"></label>
-  <label class="row" id="gNoChkRow"><span>Nicht abhakbar</span><input type="checkbox" id="gNoChk" class="chk" title="Nur verschieben oder löschen"></label>
+  <div class="opts">
+    <label class="opt"><input type="checkbox" id="gImp" class="chk"><span>Wichtig</span></label>
+    <label class="opt" id="gInfRow"><input type="checkbox" id="gInf" class="chk" title="Verbraucht sich nicht; Wegnehmen erzeugt eine Packung (Anzahl 1)"><span>Unendlich</span></label>
+    <label class="opt" id="gDivRow"><input type="checkbox" id="gDiv" class="chk" title="Mit Alt-Ziehen lassen sich ½, ⅓, ¼ oder ⅕ einer Packung verschieben"><span>Teilbar</span></label>
+    <label class="opt" id="gNoChkRow"><input type="checkbox" id="gNoChk" class="chk" title="Nur verschieben oder löschen"><span>Nicht abhakbar</span></label>
+  </div>
   <p class="hint" id="gCopyHint" hidden>Entnommene Packung eines unendlichen Lebensmittels: normal abhakbar und verschiebbar. „Unendlich“ und „Nicht abhakbar“ stellst du am Original ein.</p>
   <p class="err" id="gErr"></p>
   <div class="btns">
