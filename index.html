@@ -57,6 +57,9 @@ input:not([type]),input[type=text],input[type=password],input[type=number],input
 .bar .seg button{padding:3px 7px}
 .bar .grp{display:flex;gap:4px;align-items:center}
 .bar .sp{flex:1}
+.expflt{display:flex;gap:4px;padding:4px 6px}
+.expflt button{flex:1;padding:3px 6px;font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:inherit}
+.expflt button.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));font-weight:600}
 .calbox{padding:8px 10px 6px;border-bottom:1px solid var(--line)}
 .calbox .ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .calbox .cm{border:0;background:none;font-weight:700;font-size:14px;padding:2px 8px}
@@ -743,7 +746,7 @@ function defaults() {
     .concat([{ id: 'next', name: 'Next', kind: 'custom' }, { id: 'backlog', name: 'Backlog', kind: 'custom' }]);
   return {
     format: FORMAT, version: VERSION, saved: 0, week: monday(today()), manual: null,
-    settings: { view: 'week', restock: 'backlog', layout: 'agenda', minRows: 1, theme: 'standard', fontSize: 100, longAuto: 4, longOrange: 30, longYellow: 60, favGroups: ['Essen', 'Vorrat'] },
+    settings: { view: 'week', restock: 'backlog', layout: 'agenda', minRows: 1, theme: 'standard', fontSize: 100, expShow: 'both', longAuto: 4, longOrange: 30, longYellow: 60, favGroups: ['Essen', 'Vorrat'] },
     lists, foods: [], pieces: [], rules: [], exceptions: [], singles: []
   };
 }
@@ -884,7 +887,7 @@ function validate(x) {
   const lw = Number.isInteger(s.listWidth) && s.listWidth >= 200 && s.listWidth <= 900 ? s.listWidth : 300;
   const addMode = s.addMode === 'date' ? 'date' : 'cell';   // optional, default: "+" in the cell
   const marks = ['semi', 'dark', 'dotted', 'accent', 'caps', 'star'];
-  d.settings = { addMode, favMark: marks.includes(s.favMark) ? s.favMark : 'semi', listWidth: lw, favGroups: fg.includes('Essen') ? fg : ['Essen'].concat(fg), fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 80 && s.fontSize <= 140 && s.fontSize % 5 === 0 ? s.fontSize : 100, theme: s.theme === 'blue' ? 'blue' : 'standard', view: s.view === 'today' ? 'today' : 'week', layout: s.layout === 'columns' ? 'columns' : 'agenda', hidePast: s.hidePast === true, minRows: Number.isInteger(s.minRows) && s.minRows >= 1 && s.minRows <= 6 ? s.minRows : 2, longAuto: Number.isInteger(s.longAuto) && s.longAuto >= 0 && s.longAuto <= 60 ? s.longAuto : 4, longOrange: Number.isInteger(s.longOrange) && s.longOrange >= 1 && s.longOrange <= 999 ? s.longOrange : 30, longYellow: Number.isInteger(s.longYellow) && s.longYellow >= 1 && s.longYellow <= 999 ? s.longYellow : 60, restock: listIds.has(s.restock) ? s.restock : d.lists.find(l => l.kind === 'custom')?.id || 'thisWeekLunch' };
+  d.settings = { addMode, favMark: marks.includes(s.favMark) ? s.favMark : 'semi', listWidth: lw, favGroups: fg.includes('Essen') ? fg : ['Essen'].concat(fg), fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 80 && s.fontSize <= 140 && s.fontSize % 5 === 0 ? s.fontSize : 100, theme: s.theme === 'blue' ? 'blue' : 'standard', view: s.view === 'today' ? 'today' : 'week', layout: s.layout === 'columns' ? 'columns' : 'agenda', hidePast: s.hidePast === true, minRows: Number.isInteger(s.minRows) && s.minRows >= 1 && s.minRows <= 6 ? s.minRows : 2, longAuto: Number.isInteger(s.longAuto) && s.longAuto >= 0 && s.longAuto <= 60 ? s.longAuto : 4, longOrange: Number.isInteger(s.longOrange) && s.longOrange >= 1 && s.longOrange <= 999 ? s.longOrange : 30, expShow: s.expShow === 'short' || s.expShow === 'long' ? s.expShow : 'both', longYellow: Number.isInteger(s.longYellow) && s.longYellow >= 1 && s.longYellow <= 999 ? s.longYellow : 60, restock: listIds.has(s.restock) ? s.restock : d.lists.find(l => l.kind === 'custom')?.id || 'thisWeekLunch' };
   return d;
 }
 
@@ -1329,14 +1332,17 @@ function clearSearch() { if ($('listSearch').value) $('listSearch').value = ''; 
 $('listSearch').oninput = applyListSearch;
 $('listSearch').onkeydown = e => { if (e.key === 'Escape') { e.target.value = ''; applyListSearch(); } };
 // Generated list "Ablauf": every uneaten piece with an expiry date, one row each, sorted by date (H-1).
+// Filter of the list (D.settings.expShow): only short-life, only long-life (food.longLife) or both.
+const expFilterHtml = () => `<div class="expflt">${[['both', 'alle'], ['short', 'kurz haltbar'], ['long', 'lang haltbar']].map(([v, l]) => `<button type="button" class="${(D.settings.expShow || 'both') === v ? 'on' : ''}" data-act="expflt" data-v="${v}">${l}</button>`).join('')}</div>`;
 function expiringPieces() {
-  return D.pieces.filter(p => live(p) && p.expiry).sort((a, b) => byExpiry(a, b) || food(a.food).name.localeCompare(food(b.food).name, 'de'));
+  const sh = D.settings.expShow || 'both';
+  return D.pieces.filter(p => live(p) && p.expiry && (sh === 'both' || (sh === 'long') === !!food(p.food).longLife)).sort((a, b) => byExpiry(a, b) || food(a.food).name.localeCompare(food(b.food).name, 'de'));
 }
 function expiryBox() {
   const ps = expiringPieces(), where = p => p.loc.list ? list(p.loc.list).name : fmtDay(p.loc.date) + ' ' + MEALS[p.loc.meal];
   return `<div class="lst gen${fold.expiry ? ' fold' : ''}" data-gen="expiry">
     <div class="lh"><span class="nm" data-act="foldgen" title="Automatisch erzeugt: alle Packungen mit Ablaufdatum">${fold.expiry ? '▸' : '▾'} Ablauf${expBubble(ps)}</span><span class="cnt">${ps.length}</span></div>
-    <div class="lb">${ps.map(p => `<div class="chip xrow ${expClass(p.expiry, food(p.food))}${p.important ? ' imp' : ''}" data-piece="${p.id}" title="${esc(food(p.food).name + ' · ' + where(p))}">
+    <div class="lb">${expFilterHtml()}${ps.map(p => `<div class="chip xrow ${expClass(p.expiry, food(p.food))}${p.important ? ' imp' : ''}" data-piece="${p.id}" title="${esc(food(p.food).name + ' · ' + where(p))}">
       <span class="t">${esc(food(p.food).name)}<small class="pw">${esc(where(p))}</small></span><span class="d">${fmtShort(p.expiry) + p.expiry.slice(2, 4)}</span>
       ${canEat(p) ? '<button type="button" class="ck" data-act="peat1" title="Gegessen">✓</button>' : ''}</div>`).join('') || '<div class="empty">keine</div>'}</div></div>`;
 }
@@ -1618,6 +1624,7 @@ function listClick(e) {
       D.lists = D.lists.filter(l => l.id !== id); persist(); render(); break;
     case 'eat': eatChip(a.closest('.chip')); break;
     case 'restock': openAdd({ list: D.settings.restock }, food(a.dataset.food)); break;
+    case 'expflt': D.settings.expShow = a.dataset.v; persist(); render(); break;
     case 'foldgen': fold.expiry = !fold.expiry; render(); break;
     case 'cont': openCont(a.closest('[data-key]').dataset.key); break;
     case 'cfoldt': cfoldClick(e, a.closest('[data-key]').dataset.key); break;
@@ -2611,7 +2618,7 @@ function phoneLists() {
   }).join('');
 }
 function phoneExpiry() {
-  return `<h2 class="pgh">Ablauf</h2>${expiringPieces().map(p => pieceRow(p, true)).join('') || '<div class="pempty">keine Lebensmittel mit Ablaufdatum</div>'}`;
+  return `<h2 class="pgh">Ablauf</h2>${expFilterHtml()}${expiringPieces().map(p => pieceRow(p, true)).join('') || '<div class="pempty">keine Lebensmittel mit Ablaufdatum</div>'}`;
 }
 function renderPhone() {
   const content = { week: phoneWeek, lists: phoneLists, expiry: phoneExpiry, fav: () => standardOverview(true) }[phoneTab]();
@@ -2813,6 +2820,7 @@ $('phone').addEventListener('click', e => {
     case 'psync': $('ghBtn').click(); return;
     case 'pcmove': return openContMove(a.dataset.key);
     case 'pshopgh': shopFromGithub(); return;
+    case 'expflt': D.settings.expShow = a.dataset.v; persist(); render(); return;
     case 'pqclear': phoneQ = ''; render(); $('pq').focus(); return;
     case 'psearch': phoneSearch = !phoneSearch; if (!phoneSearch) phoneQ = ''; render(); if (phoneSearch) $('pq').focus(); return;
     case 'pfoldall': {
