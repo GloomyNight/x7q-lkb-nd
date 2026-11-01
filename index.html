@@ -66,6 +66,9 @@ input:not([type]),input[type=text],input[type=password],input[type=number],input
 .calbox .cg .out{opacity:.35}
 .calbox .cg .past{opacity:.45}
 .calbox .cg .out.past{opacity:.25}
+.calbox .cg .wk0{background:color-mix(in srgb, var(--accent) 30%, transparent)}
+.calbox .cg .wk1{background:color-mix(in srgb, var(--accent) 12%, transparent)}
+.calbox .cg .out.wk0,.calbox .cg .out.wk1{opacity:.6}
 .calbox .cg .today{font-weight:800;opacity:1}
 #calBtn{display:inline-flex;align-items:center;justify-content:center;width:31px;height:26px;padding:0}   /* same size as the ⊟ and ☰ buttons */
 #calBtn svg{display:block}   /* line icon in the text colour, like the other buttons */
@@ -551,7 +554,8 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
 
 <dialog id="cntDlg"><form id="cntForm" novalidate>
   <h2 id="cntHead">Verschieben</h2>
-  <label class="row"><span id="cntLbl">Anzahl</span><span><input type="number" id="cntIn" min="1" style="width:70px"><span id="cntOf"> von <span id="cntMax"></span></span></span></label>
+  <label class="row" id="cntFracRow" hidden><span>Teil</span><select id="cntFrac"></select></label>
+  <label class="row" id="cntCntRow"><span id="cntLbl">Anzahl</span><span><input type="number" id="cntIn" min="1" style="width:70px"><span id="cntOf"> von <span id="cntMax"></span></span></span></label>
   <p class="hint" id="cntHint">Die zuerst ablaufenden Packungen werden verschoben.</p>
   <div class="btns"><span class="sp"></span><button type="button" id="cntCancel">Abbrechen</button><button type="button" id="cntMove" hidden>Original verschieben</button><button type="submit" class="primary" id="cntOk">Verschieben</button></div>
 </form></dialog>
@@ -625,6 +629,7 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
   <label class="row"><span>Favorit</span><select id="gFav"></select></label>
   <label class="row"><span>Wichtig</span><input type="checkbox" id="gImp" class="chk"></label>
   <label class="row" id="gInfRow"><span>Unendlich</span><input type="checkbox" id="gInf" class="chk" title="Verbraucht sich nicht; Wegnehmen erzeugt eine Packung (Anzahl 1)"></label>
+  <label class="row" id="gDivRow"><span>Teilbar</span><input type="checkbox" id="gDiv" class="chk" title="Mit Alt-Ziehen lassen sich ½, ⅓, ¼ oder ⅕ einer Packung verschieben"></label>
   <label class="row" id="gNoChkRow"><span>Nicht abhakbar</span><input type="checkbox" id="gNoChk" class="chk" title="Nur verschieben oder löschen"></label>
   <p class="hint" id="gCopyHint" hidden>Entnommene Packung eines unendlichen Lebensmittels: normal abhakbar und verschiebbar. „Unendlich“ und „Nicht abhakbar“ stellst du am Original ein.</p>
   <p class="err" id="gErr"></p>
@@ -801,7 +806,7 @@ function validate(x) {
     // warnAt/alarmAt are optional (default 0): orange at count <= warnAt, red at count <= alarmAt.
     // warnAt/alarmAt: orange/red when fewer than n pieces are left; 0 = no warning (default).
     const th = v => Number.isInteger(v) && v >= 0 && v <= 99 ? v : 0, alarmAt = th(f.alarmAt);
-    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}) };
+    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}), ...(f.divisible === true && f.infinite !== true ? { divisible: true } : {}) };
   });
   const foodIds = new Set(d.foods.map(f => f.id));
 
@@ -842,7 +847,7 @@ function validate(x) {
     if (!p || typeof p.id !== 'string' || !p.id) fail(`${w}: Kennung fehlt.`);
     if (!foodIds.has(p.food)) fail(`${w}: Lebensmittel „${p.food}“ gibt es nicht.`);
     if (p.expiry != null && !isDate(p.expiry)) fail(`${w}: Ablaufdatum ist ungültig.`);
-    return { id: p.id, food: p.food, expiry: p.expiry || null, loc: loc(p.loc, w), pos: +p.pos || 0, eaten: eaten(p.eaten, w), updated: +p.updated || 0, ...(p.important === true ? { important: true } : {}), ...(p.copy === true ? { copy: true } : {}) };
+    return { id: p.id, food: p.food, expiry: p.expiry || null, loc: loc(p.loc, w), pos: +p.pos || 0, eaten: eaten(p.eaten, w), updated: +p.updated || 0, ...(p.important === true ? { important: true } : {}), ...(p.copy === true ? { copy: true } : {}), ...(Number.isInteger(p.part) && p.part > 0 && p.part < 60 ? { part: p.part } : {}) };
   });
   // manual: record of a week change done ahead of time (optional), needed to revert it.
   const mv = x.manual, okLoc = l => l && (typeof l.list === 'string' || (isDate(l.date) && l.meal in MEALS));
@@ -936,12 +941,27 @@ function takeCopies(src, to, n, beforePos) {
   for (let i = 0; i < n; i++) D.pieces.push({ id: uid(), food: src.food, expiry: src.expiry, loc: { ...to }, pos: beforePos != null ? beforePos - 0.5 + i / 1000 : now() + i, eaten: null, updated: now(), copy: true, ...(src.important ? { important: true } : {}) });
   renumber(to);
 }
+// Divisible foods (food.divisible): a piece can be split into parts. piece.part = its share of a whole pack in 60ths (absent = whole);
+// 60 is the common denominator of 1/2, 1/3, 1/4 and 1/5, so every remainder stays an integer.
+const PARTS = [30, 20, 15, 12];
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const FRAC_CHARS = { '1/2': '½', '1/3': '⅓', '2/3': '⅔', '1/4': '¼', '3/4': '¾', '1/5': '⅕', '2/5': '⅖', '3/5': '⅗', '4/5': '⅘' };
+function partLabel(v) { const k = gcd(v, 60), f = (v / k) + '/' + (60 / k); return FRAC_CHARS[f] || f; }
+// Cut `frac` (60ths) off the piece of group g that expires first: the cut part goes to `to`, the rest stays.
+function splitPiece(g, to, beforePos, frac) {
+  const src = g.pieces.filter(live).sort(byExpiry)[0]; if (!src) return;
+  const whole = src.part || 60;
+  if (frac >= whole) return movePiece(g, to, beforePos, 1);
+  D.pieces.push({ ...src, id: uid(), part: frac, loc: { ...to }, pos: beforePos != null ? beforePos - 0.5 : now(), eaten: null, updated: now() });
+  src.part = whole - frac; src.updated = now();
+  renumber(to);
+}
 function groupsAt(loc, withEaten) {
   const k = locKey(loc), m = new Map();
   for (const p of D.pieces) {
     if (locKey(p.loc) !== k || (!withEaten && p.eaten)) continue;
-    const g = p.food + (p.eaten ? ':e' : '') + (isCopy(p) ? ':c' : '');
-    if (!m.has(g)) m.set(g, { food: food(p.food), loc, eaten: !!p.eaten, copy: isCopy(p), pieces: [] });
+    const g = p.food + (p.eaten ? ':e' : '') + (isCopy(p) ? ':c' : '') + (p.part ? ':' + p.part : '');
+    if (!m.has(g)) m.set(g, { food: food(p.food), loc, eaten: !!p.eaten, copy: isCopy(p), part: p.part || 0, pieces: [] });
     m.get(g).pieces.push(p);
   }
   const gs = [...m.values()];
@@ -1048,15 +1068,20 @@ function movePiece(g, to, beforePos, n = 1, raw) {
 }
 // Ask how many pieces to move (Alt+drag).
 function askCount(g) {
-  const inf = g.food.infinite && !g.copy, max = inf ? 30 : g.pieces.filter(live).length;
+  const inf = g.food.infinite && !g.copy, max = inf ? 30 : g.pieces.filter(live).length, portion = g.part || 60;
+  const fracs = g.food.divisible && !inf ? PARTS.filter(v => v < portion) : [];
   return new Promise(res => {
+    $('cntFracRow').hidden = !fracs.length;
+    $('cntFrac').innerHTML = '<option value="0">ganze Packung(en)</option>' + fracs.map(v => `<option value="${v}">${partLabel(v)} Packung</option>`).join('');
+    const syncFrac = () => { $('cntCntRow').hidden = !!+$('cntFrac').value; };
+    $('cntFrac').onchange = syncFrac; syncFrac();
     $('cntHead').textContent = g.food.name + (inf ? ' entnehmen' : ' verschieben');
     $('cntLbl').textContent = inf ? 'Kopien' : 'Anzahl'; $('cntHint').textContent = inf ? 'Das unendliche Lebensmittel bleibt; es entstehen so viele Packungen mit Anzahl 1. Oder das Original selbst verschieben.' : 'Die zuerst ablaufenden Packungen werden verschoben.';
     $('cntOk').textContent = inf ? 'Kopien erzeugen' : 'Verschieben'; $('cntMove').hidden = !inf;
     $('cntOf').hidden = inf; $('cntMax').textContent = max; $('cntIn').max = max; $('cntIn').value = inf ? 1 : max;
     const dlg = $('cntDlg');
     const done = v => { dlg.onclose = null; dlg.close(); res(v); };
-    $('cntForm').onsubmit = e => { e.preventDefault(); done(Math.max(1, Math.min(max, Math.floor(+$('cntIn').value) || 1))); };
+    $('cntForm').onsubmit = e => { e.preventDefault(); if (+$('cntFrac').value) return done({ frac: +$('cntFrac').value }); done(Math.max(1, Math.min(max, Math.floor(+$('cntIn').value) || 1))); };
     $('cntMove').onclick = () => done('move');
     $('cntCancel').onclick = () => done(null);
     dlg.onclose = () => res(null);
@@ -1129,11 +1154,12 @@ function renderCal() {
   if (!calOpen) return;
   const t = today(); if (!calMonth) calMonth = t.slice(0, 8) + '01';
   const y = +calMonth.slice(0, 4), m = +calMonth.slice(5, 7), dim = new Date(y, m, 0).getDate();
+  const cw = curWeek(), nw = addDays(cw, 7);   // planning week (after a manual week change already the next one) and the week after
   const lead = wday(calMonth), weeks = Math.ceil((lead + dim) / 7), start = addDays(calMonth, -lead);
   let h = `<div class="ch"><button type="button" class="ic" data-cal="-1" title="Vorheriger Monat">‹</button><button type="button" class="cm" data-cal="0" title="Zum aktuellen Monat">${MONTHS[m - 1]} ${y}</button><button type="button" class="ic" data-cal="1" title="Nächster Monat">›</button></div><div class="cg">`;
   h += WD.map((w, i) => `<span class="wd">${w}</span>`).join('');
   for (let i = 0; i < weeks * 7; i++) {
-    const d = addDays(start, i), cls = [d.slice(0, 7) !== calMonth.slice(0, 7) ? 'out' : '', d === t ? 'today' : '', d < t ? 'past' : ''].filter(Boolean).join(' ');
+    const d = addDays(start, i), cls = [d.slice(0, 7) !== calMonth.slice(0, 7) ? 'out' : '', d === t ? 'today' : '', d < t ? 'past' : '', d >= cw && d < nw ? 'wk0' : d >= nw && d < addDays(nw, 7) ? 'wk1' : ''].filter(Boolean).join(' ');
     h += `<span class="${cls}" title="${WD[wday(d)]} ${fmtShort(d)}${d.slice(0, 4)}">${+d.slice(8)}</span>`;
   }
   box.innerHTML = h + '</div>';
@@ -1176,7 +1202,7 @@ function groupChip(g, virt) {
   const tip = f.name + (virt ? '\nverplant: ' + at + ' ' + MEALS[g.loc.meal] : '') + (g.pieces.some(planExpired) ? '\nLäuft vor dem geplanten Tag ab' : '') + (dates.length ? '\nAblauf: ' + g.pieces.map(p => p.expiry ? fmtShort(p.expiry) + p.expiry.slice(0, 4) : 'ohne Datum').join(', ') : '');
   const imp = !g.eaten && g.pieces.some(p => p.important), xp = g.pieces.some(planExpired);
   return `<div class="chip ${cls}${imp ? ' imp' : ''}${xp ? ' xplan' : ''}${f.standard ? ' std' : ''}${virt ? ' virt' : ''}" draggable="${!g.eaten}" data-kind="group" data-food="${f.id}" data-loc="${esc(locKey(g.loc))}" data-eaten="${g.eaten ? 1 : 0}" data-copy="${g.copy ? 1 : 0}" data-pos="${g.pos}" title="${esc(tip)}">
-    <span class="t">${esc(f.name)}</span>${virt ? `<span class="n at" title="${esc(at)}">${WD[wday(g.loc.date)]}</span>` : ''}${f.infinite && !g.copy ? '<span class="n" title="unendlich">∞</span>' : n > 1 ? `<span class="n">×${n}</span>` : ''}${g.expiry && g.expiry < (+today().slice(0, 4) + 1) + today().slice(4) ? `<span class="d">${expRange(dates)}</span>` : ''}
+    <span class="t">${esc(f.name)}</span>${virt ? `<span class="n at" title="${esc(at)}">${WD[wday(g.loc.date)]}</span>` : ''}${f.infinite && !g.copy ? '<span class="n" title="unendlich">∞</span>' : ''}${g.part ? `<span class="n" title="Teil einer Packung">${partLabel(g.part)}</span>` : ''}${!(f.infinite && !g.copy) && n > 1 ? `<span class="n">×${n}</span>` : ''}${g.expiry && g.expiry < (+today().slice(0, 4) + 1) + today().slice(4) ? `<span class="d">${expRange(dates)}</span>` : ''}
     ${g.eaten || canEat(g.pieces[0]) ? `<button type="button" class="ck" data-act="eat" title="${g.eaten ? 'Nicht gegessen' : g.loc.list ? 'Eine Packung gegessen' : 'Gegessen'}">${g.eaten ? '↺' : '✓'}</button>` : ''}</div>`;
 }
 
@@ -1294,7 +1320,7 @@ function expiryBox() {
 // Overview of standard foods (LI-9): a view across all places, not a place itself.
 // Favourites (internally "standard" foods): table with name, count, places; create and remove favourites here.
 // Stock level of a favourite: 'red' at or below the red threshold, 'orange' at or below the orange one.
-function favCount(f) { return D.pieces.filter(p => p.food === f.id && live(p)).length; }
+function favCount(f) { return D.pieces.filter(p => p.food === f.id && live(p)).reduce((n, p) => n + (p.part || 60) / 60, 0); }   // parts count by their share
 function favLevel(f) { if (f.infinite) return ''; const n = favCount(f); return n < (f.alarmAt || 0) ? 'red' : n < (f.warnAt || 0) ? 'orange' : ''; }
 function favWarn() {
   const fs = D.foods.filter(f => f.standard);
@@ -1540,7 +1566,7 @@ document.addEventListener('drop', e => {
       movePiece(d.g, t.loc, before, inf ? 1 : d.g.pieces.filter(live).length, inf);
     } else if (e.altKey) {                                                    // Alt: ask how many
       const inf = d.g.food.infinite && !d.g.copy;
-      if (inf || d.g.pieces.filter(live).length > 1) { askCount(d.g).then(k => { if (k) { movePiece(d.g, t.loc, before, k === 'move' ? 1 : k, k === 'move'); clearSearch(); persist(); render(); } }); return; }
+      if (inf || d.g.pieces.filter(live).length > 1 || d.g.food.divisible) { askCount(d.g).then(k => { if (k) { if (k.frac) splitPiece(d.g, t.loc, before, k.frac); else movePiece(d.g, t.loc, before, k === 'move' ? 1 : k, k === 'move'); clearSearch(); persist(); render(); } }); return; }
       movePiece(d.g, t.loc, before);
     } else movePiece(d.g, t.loc, before);
   }
@@ -1769,8 +1795,8 @@ function openGroup(g) {
   $('gLoc').innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(''); $('gLoc').value = here;
   $('gFav').innerHTML = '<option value="">kein Favorit</option>' + favGroups().map(x => `<option value="${esc(x)}">Favorit · ${esc(x)}</option>`).join('');
   $('gFav').value = g.food.standard ? (g.food.group || 'Essen') : '';
-  $('gImp').checked = g.pieces.some(p => p.important); $('gInf').checked = !!g.food.infinite; $('gNoChk').checked = !!g.food.noCheck;
-  $('gInfRow').hidden = $('gNoChkRow').hidden = !!g.copy; $('gCopyHint').hidden = !g.copy;
+  $('gImp').checked = g.pieces.some(p => p.important); $('gInf').checked = !!g.food.infinite; $('gNoChk').checked = !!g.food.noCheck; $('gDiv').checked = !!g.food.divisible;
+  $('gInfRow').hidden = $('gNoChkRow').hidden = $('gDivRow').hidden = !!g.copy; $('gCopyHint').hidden = !g.copy;
   $('gEat').textContent = g.eaten ? 'Alle zurückholen' : 'Alle abhaken';
   renderGroupRows(); $('grpDlg').showModal();
 }
@@ -1808,7 +1834,7 @@ $('grpForm').onsubmit = e => {
     const wasInf = !!f.infinite;
     if ($('gInf').checked) f.infinite = true; else delete f.infinite;
     if ($('gNoChk').checked) f.noCheck = true; else delete f.noCheck;
-    if (wasInf && !f.infinite) D.pieces.forEach(p => { if (p.food === f.id) delete p.copy; });   // no copies without an infinite food
+    if ($('gDiv').checked && !f.infinite) f.divisible = true; else delete f.divisible;    if (wasInf && !f.infinite) D.pieces.forEach(p => { if (p.food === f.id) delete p.copy; });   // no copies without an infinite food
   }
   f.name = name; f.standard = !!$('gFav').value; if (f.standard) f.group = $('gFav').value; f.updated = now();
   const imp = $('gImp').checked;
@@ -2496,7 +2522,7 @@ function pieceRow(p, showPlace) {
   const f = food(p.food), cls = p.eaten ? 'eaten' : expClass(p.expiry);
   return `<div class="pr ${cls}${p.important && !p.eaten ? ' imp' : ''}${planExpired(p) ? ' xplan' : ''}" data-piece="${p.id}">
     ${p.eaten || canEat(p) ? `<button type="button" class="pck" data-act="peat" title="${p.eaten ? 'Nicht gegessen' : 'Gegessen'}">${p.eaten ? '↺' : '✓'}</button>` : '<span class="pck"></span>'}
-    <span class="pn">${f.standard ? `<span class="fvn">${esc(f.name)}</span>` : esc(f.name)}${f.infinite && !p.copy ? ' ∞' : ''}${showPlace ? `<small class="pw">${esc(placeName(p.loc))}</small>` : ''}</span>
+    <span class="pn">${f.standard ? `<span class="fvn">${esc(f.name)}</span>` : esc(f.name)}${f.infinite && !p.copy ? ' ∞' : ''}${p.part ? ' ' + partLabel(p.part) : ''}${showPlace ? `<small class="pw">${esc(placeName(p.loc))}</small>` : ''}</span>
     <span class="pd">${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</span></div>`;
 }
 const piecesAt = (loc, withEaten) => D.pieces.filter(p => locKey(p.loc) === locKey(loc) && (withEaten || !p.eaten))
