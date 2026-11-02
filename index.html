@@ -376,7 +376,7 @@ dialog h2{font-size:16px;margin:0 0 12px}
 #ghDlg input{width:100%;min-width:0;box-sizing:border-box}
 #ghDlg .hint{overflow-wrap:anywhere}
 .ph .icon.sync.bad{color:var(--danger)}
-button.sync{position:relative}
+button.sync,#menuBtn{position:relative}
 .sd{position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;background:#868e96;box-shadow:0 0 0 1.5px var(--surface)}
 .sd.ok{background:#2f9e44}.sd.wait{background:#f59f00}.sd.err{background:#e03131}
 dialog h3{font-size:12px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
@@ -488,10 +488,9 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
     <div id="shopPanel" hidden></div>
   </div>
   <button id="calBtn" class="icon" title="Kalender ein-/ausblenden (oben in der Listenspalte)" aria-label="Kalender"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.6"/><path d="M2 6.6h12M5.2 1.6v2.6M10.8 1.6v2.6"/><path d="M5.2 9.4h.01M8 9.4h.01M10.8 9.4h.01M5.2 11.8h.01M8 11.8h.01" stroke-width="1.8"/></svg></button>
-  <button id="syncBtn" class="icon sync" title="" aria-label="Synchronisation">☁︎<i class="sd"></i></button>
   <button id="foldAll" class="icon" title="Alle Listen in der Listenspalte zu- bzw. aufklappen">⊟</button>
   <div class="menuwrap">
-    <button id="menuBtn" class="icon" title="Menü" aria-haspopup="true">☰</button>
+    <button id="menuBtn" class="icon" title="Menü" aria-haspopup="true">☰<i class="sd"></i></button>
     <div id="menu" hidden>
       <h4>Aktionen</h4>
       <button id="shopGhBtn" title="einkauf.json aus dem GitHub-Repository in die Liste „Neu“ übernehmen und dort leeren">Einkauf importieren</button>
@@ -2251,14 +2250,14 @@ const Store = {
 // Sync indicator (cloud button with a dot): green = in sync with GitHub, amber = changes waiting / being sent, red = error, grey = GitHub not set up.
 function syncInfo(bad) {
   const at = GH.at ? ' (Stand ' + new Date(GH.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ')' : '';
-  if (!GH.cfg && !Store.gh) return ['', 'Grau: GitHub nicht eingerichtet, der Plan liegt nur ' + (Store.connected ? 'in der Datei' : 'im Browser') + '. Klick: GitHub verbinden'];
-  if (bad || !GH.ok) return ['err', 'Rot: ' + $('fstate').textContent.replace(/^⚠ /, '') + '. Klick: GitHub-Verbindung'];
+  if (!GH.cfg && !Store.gh) return ['', 'Grau: GitHub nicht eingerichtet, der Plan liegt nur ' + (Store.connected ? 'in der Datei' : 'im Browser') + '. Im Menü: GitHub verbinden'];
+  if (bad || !GH.ok) return ['err', 'Rot: ' + $('fstate').textContent.replace(/^⚠ /, '') + '. Im Menü: GitHub-Verbindung'];
   if (GH.timer || GH.busy || D.saved !== GH.synced) return ['wait', 'Gelb: Änderungen werden zu GitHub gesendet …'];
   return ['ok', 'Grün: synchron mit GitHub' + at + '. Gelb = wird gesendet, Rot = Fehler, Grau = nicht eingerichtet'];
 }
 function updateSyncDot(bad) {
   const [c, t] = syncInfo(bad);
-  document.querySelectorAll('.sd').forEach(d => { d.className = 'sd ' + c; d.parentElement.title = t; });
+  document.querySelectorAll('.sd').forEach(d => { d.className = 'sd ' + c; d.parentElement.title = d.parentElement.id === 'menuBtn' ? 'Menü – ' + t : t; });
 }
 const syncOk = () => Store.connected || (Store.gh && GH.ok);
 function setFState(t, bad) {
@@ -2268,11 +2267,9 @@ function setFState(t, bad) {
   $('connBtn').hidden = Store.connected || !window.showDirectoryPicker;
     $('ghBtn').textContent = GH.cfg ? 'GitHub-Verbindung…' : 'GitHub verbinden…';
   $('menuBtn').classList.toggle('warn', !on.length || !!bad);
-  $('menuBtn').title = 'Menü' + (on.length && !bad ? '' : ' – ' + $('fstate').textContent);
   updateSyncDot(bad);
 }
 $('connBtn').onclick = e => Store.connect(e.shiftKey);
-$('syncBtn').onclick = () => $('ghBtn').click();
 updateSyncDot();
 $('ghBtn').onclick = () => {
   $('menu').hidden = true; const c = GH.load() || {};
