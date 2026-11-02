@@ -176,7 +176,7 @@ body.colresize,body.colresize *{cursor:col-resize!important;user-select:none}
 .chip .t:has(+ .n){flex:0 1 auto}
 .chip .n{font-weight:600;font-variant-numeric:tabular-nums;margin-right:auto}
 .chip .n.at{font-weight:400;color:var(--muted)}   /* preview entries: the weekday right behind the name */
-.chip .n.at:has(+ .n){margin-right:0}
+.chip .n:has(+ .n){margin-right:0}   /* several badges (∞, ½, ×4, weekday) sit together right behind the name */
 .chip .d{font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .chip .ck{border:0;background:none;padding:0 3px;font-size:13px;color:var(--muted);line-height:1}
 .chip .ck:hover{color:var(--text)}
