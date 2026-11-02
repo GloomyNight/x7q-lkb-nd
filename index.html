@@ -376,7 +376,8 @@ dialog h2{font-size:16px;margin:0 0 12px}
 #ghDlg input{width:100%;min-width:0;box-sizing:border-box}
 #ghDlg .hint{overflow-wrap:anywhere}
 .ph .icon.sync.bad{color:var(--danger)}
-button.sync,#menuBtn{position:relative}
+button.sync,#menuBtn,.ph .pmenu{position:relative}
+body.phone > #menu{position:fixed;top:52px;left:8px;right:8px;max-width:414px;margin:0 auto;z-index:60;max-height:calc(100vh - 64px)}
 .sd{position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;background:#868e96;box-shadow:0 0 0 1.5px var(--surface)}
 .sd.ok{background:#2f9e44}.sd.wait{background:#f59f00}.sd.err{background:#e03131}
 dialog h3{font-size:12px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
@@ -1488,6 +1489,7 @@ function render() {
   $('grid').style.setProperty('--minrows', D.settings.minRows);
   maintain();
   document.body.classList.toggle('phone', isPhone());
+  { const host = isPhone() ? document.body : $('menuBtn').parentElement; if ($('menu').parentElement !== host) host.appendChild($('menu')); }   // phone: the bar is hidden, so the menu lives in <body>
   if (isPhone()) renderPhone(); else { renderBar(); renderLists(); renderGrid(); applyListSearch(); $('foldAll').textContent = columnListIds().some(id => !fold[id]) ? '⊟' : '⊞'; }
   $('foodNames').innerHTML = D.foods.map(f => `<option value="${esc(f.name)}">`).join('');
 }
@@ -2257,7 +2259,7 @@ function syncInfo(bad) {
 }
 function updateSyncDot(bad) {
   const [c, t] = syncInfo(bad);
-  document.querySelectorAll('.sd').forEach(d => { d.className = 'sd ' + c; d.parentElement.title = d.parentElement.id === 'menuBtn' ? 'Menü – ' + t : t; });
+  document.querySelectorAll('.sd').forEach(d => { d.className = 'sd ' + c; d.parentElement.title = 'Menü – ' + t; });
 }
 const syncOk = () => Store.connected || (Store.gh && GH.ok);
 function setFState(t, bad) {
@@ -2313,7 +2315,7 @@ document.addEventListener('click', e => {
   // Dialogs opened from the favourites keep it open; clicks inside a dialog never close the panels.
   if (e.target.closest('dialog')) return;
   const wrap = e.target.closest('.menuwrap');
-  for (const id of ['menu', 'stdPanel', 'shopPanel']) if (!$(id).hidden && (!wrap || !wrap.contains($(id)))) $(id).hidden = true;
+  for (const id of ['menu', 'stdPanel', 'shopPanel']) if (!$(id).hidden && !(id === 'menu' && e.target.closest('#menu')) && (!wrap || !wrap.contains($(id)))) $(id).hidden = true;
 });
 function togglePanel(id, other) {
   $('menu').hidden = true; $(other).hidden = true; const p = $(id); p.hidden = !p.hidden;
@@ -2649,7 +2651,7 @@ function renderPhone() {
       <button type="button" class="icon" data-act="pundo" title="Rückgängig"${undoStack.length ? '' : ' disabled'}>↶</button><span class="sp"></span>
       <button type="button" class="icon" data-act="pshopgh" title="Einkauf importieren" aria-label="Einkauf importieren">${cartIcon}</button>
       <button type="button" class="icon${phoneSearch ? ' on' : ''}" data-act="psearch" title="Suchen" aria-label="Suchen">${searchIcon}</button>${foldBtn}
-      <button type="button" class="icon sync" data-act="psync" title="${esc(syncInfo()[1])}" aria-label="Speicherung">☁︎<i class="sd ${syncInfo()[0]}"></i></button>
+      <button type="button" class="icon pmenu" data-act="pmenu" title="Menü – ${esc(syncInfo()[1])}" aria-label="Menü">☰<i class="sd ${syncInfo()[0]}"></i></button>
       ${phonePreview ? '<button type="button" data-act="pexit" title="Zurück zur PC-Ansicht">PC-Ansicht</button>' : ''}</header>
     ${phoneSearch ? `<div class="psearch"><input type="search" id="pq" placeholder="Suchen …" autocomplete="off" value="${esc(phoneQ)}"><button type="button" class="pqclr" data-act="pqclear" title="Suche löschen" aria-label="Suche löschen">✕</button></div>` : ''}
     <main class="pbody" id="pbody">${content}</main>
@@ -2832,7 +2834,7 @@ $('phone').addEventListener('click', e => {
   const a = e.target.closest('[data-act]');
   const row = e.target.closest('[data-piece]'), p = row && D.pieces.find(x => x.id === row.dataset.piece);
   if (a) switch (a.dataset.act) {
-    case 'psync': $('ghBtn').click(); return;
+    case 'pmenu': e.stopPropagation(); $('stdPanel').hidden = true; if ($('menu').hidden) renderMenuSettings(); $('menu').hidden = !$('menu').hidden; return;   // the burger menu of the PC bar, moved to <body> on the phone
     case 'pcmove': return openContMove(a.dataset.key);
     case 'pshopgh': shopFromGithub(); return;
     case 'expflt': D.settings.expShow = a.dataset.v; persist(); render(); return;
