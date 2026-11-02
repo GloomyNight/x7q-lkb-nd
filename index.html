@@ -376,6 +376,9 @@ dialog h2{font-size:16px;margin:0 0 12px}
 #ghDlg input{width:100%;min-width:0;box-sizing:border-box}
 #ghDlg .hint{overflow-wrap:anywhere}
 .ph .icon.sync.bad{color:var(--danger)}
+button.sync{position:relative}
+.sd{position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;background:#868e96;box-shadow:0 0 0 1.5px var(--surface)}
+.sd.ok{background:#2f9e44}.sd.wait{background:#f59f00}.sd.err{background:#e03131}
 dialog h3{font-size:12px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .row{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:8px 0}
 .row>span:first-child{color:var(--muted)}
@@ -485,6 +488,7 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
     <div id="shopPanel" hidden></div>
   </div>
   <button id="calBtn" class="icon" title="Kalender ein-/ausblenden (oben in der Listenspalte)" aria-label="Kalender"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.6"/><path d="M2 6.6h12M5.2 1.6v2.6M10.8 1.6v2.6"/><path d="M5.2 9.4h.01M8 9.4h.01M10.8 9.4h.01M5.2 11.8h.01M8 11.8h.01" stroke-width="1.8"/></svg></button>
+  <button id="syncBtn" class="icon sync" title="" aria-label="Synchronisation">☁︎<i class="sd"></i></button>
   <button id="foldAll" class="icon" title="Alle Listen in der Listenspalte zu- bzw. aufklappen">⊟</button>
   <div class="menuwrap">
     <button id="menuBtn" class="icon" title="Menü" aria-haspopup="true">☰</button>
@@ -2149,7 +2153,7 @@ const GH = {
     catch (e) { throw { msg: 'keine Verbindung', net: true }; }
     if (r.status === 409 || r.status === 422) return 'conflict';
     if (!r.ok) throw { msg: this.err(r) };
-    this.sha = (await r.json()).content.sha; this.synced = D.saved; return 'ok';
+    this.sha = (await r.json()).content.sha; this.synced = D.saved; this.at = Date.now(); return 'ok';
   }
 };
 const Store = {
@@ -2157,7 +2161,7 @@ const Store = {
   save() {
     try { localStorage.setItem(LS, JSON.stringify(D)); } catch (e) {}
     if (this.connected) { clearTimeout(this.timer); this.timer = setTimeout(() => this.write(), 400); }
-    if (this.gh) { clearTimeout(GH.timer); GH.timer = setTimeout(() => this.ghWrite(), 3000); }   // one commit per burst of changes
+    if (this.gh) { clearTimeout(GH.timer); GH.timer = setTimeout(() => this.ghWrite(), 3000); updateSyncDot(); }   // one commit per burst of changes
   },
   async write() {
     try {
@@ -2167,7 +2171,7 @@ const Store = {
   },
   // Replace the plan by the one read from GitHub.
   ghTake(r) {
-    D = validate(JSON.parse(r.text)); GH.sha = r.sha; GH.synced = D.saved; lastSnap = snapshot(); undoStack.length = 0;
+    D = validate(JSON.parse(r.text)); GH.sha = r.sha; GH.synced = D.saved; GH.at = Date.now(); lastSnap = snapshot(); undoStack.length = 0;
     try { localStorage.setItem(LS, JSON.stringify(D)); } catch (e) {}
     render();
   },
@@ -2184,7 +2188,7 @@ const Store = {
       }
       GH.ok = res === 'ok'; setFState(GH.ok ? undefined : '⚠ GitHub: Speichern fehlgeschlagen', !GH.ok);
     } catch (e) { GH.ok = false; setFState('⚠ GitHub: ' + (e.msg || e.message), true); if (!e.msg) console.warn(e); }
-    GH.busy = false;
+    GH.busy = false; updateSyncDot(!GH.ok);
     if (GH.again) { GH.again = false; this.ghWrite(); }
   },
   // Pull a newer plan from another device (when the app comes back to the foreground), unless local changes are still waiting to be sent.
@@ -2197,7 +2201,7 @@ const Store = {
     if (!this.gh || !GH.ok || GH.busy || GH.timer || document.visibilityState !== 'visible' || document.querySelector('dialog[open]') || document.activeElement.matches('input,select,textarea')) return;   // not while the user is typing
     try {
       const r = await GH.api('/contents/' + FILE_NAME, { headers: { Accept: 'application/vnd.github.sha' } });
-      if (r.ok && (await r.text()).trim() !== GH.sha) await this.ghPull();
+      if (r.ok) { if ((await r.text()).trim() !== GH.sha) await this.ghPull(); else if (D.saved === GH.synced) { GH.at = Date.now(); updateSyncDot(); } }
     } catch (e) {}
   },
   // Connect: the newer state wins (plan on GitHub or what is in this browser); a missing file is created from this browser's plan after asking.
@@ -2244,18 +2248,32 @@ const Store = {
     setFState();
   }
 };
+// Sync indicator (cloud button with a dot): green = in sync with GitHub, amber = changes waiting / being sent, red = error, grey = GitHub not set up.
+function syncInfo(bad) {
+  const at = GH.at ? ' (Stand ' + new Date(GH.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ')' : '';
+  if (!GH.cfg && !Store.gh) return ['', 'Grau: GitHub nicht eingerichtet, der Plan liegt nur ' + (Store.connected ? 'in der Datei' : 'im Browser') + '. Klick: GitHub verbinden'];
+  if (bad || !GH.ok) return ['err', 'Rot: ' + $('fstate').textContent.replace(/^⚠ /, '') + '. Klick: GitHub-Verbindung'];
+  if (GH.timer || GH.busy || D.saved !== GH.synced) return ['wait', 'Gelb: Änderungen werden zu GitHub gesendet …'];
+  return ['ok', 'Grün: synchron mit GitHub' + at + '. Gelb = wird gesendet, Rot = Fehler, Grau = nicht eingerichtet'];
+}
+function updateSyncDot(bad) {
+  const [c, t] = syncInfo(bad);
+  document.querySelectorAll('.sd').forEach(d => { d.className = 'sd ' + c; d.parentElement.title = t; });
+}
 const syncOk = () => Store.connected || (Store.gh && GH.ok);
 function setFState(t, bad) {
   const on = [Store.connected ? FILE_NAME : '', Store.gh && GH.ok ? 'GitHub' : ''].filter(Boolean);
   $('fstate').textContent = t || (on.length ? '✓ ' + on.join(' · ') : 'nur im Browser gespeichert');
   $('fstate').style.color = bad ? 'var(--danger)' : '';
   $('connBtn').hidden = Store.connected || !window.showDirectoryPicker;
-  document.querySelectorAll('[data-act="psync"]').forEach(b => { b.classList.toggle('bad', !on.length || !!bad); b.title = $('fstate').textContent; });
-  $('ghBtn').textContent = GH.cfg ? 'GitHub-Verbindung…' : 'GitHub verbinden…';
+    $('ghBtn').textContent = GH.cfg ? 'GitHub-Verbindung…' : 'GitHub verbinden…';
   $('menuBtn').classList.toggle('warn', !on.length || !!bad);
   $('menuBtn').title = 'Menü' + (on.length && !bad ? '' : ' – ' + $('fstate').textContent);
+  updateSyncDot(bad);
 }
 $('connBtn').onclick = e => Store.connect(e.shiftKey);
+$('syncBtn').onclick = () => $('ghBtn').click();
+updateSyncDot();
 $('ghBtn').onclick = () => {
   $('menu').hidden = true; const c = GH.load() || {};
   $('ghUser').value = c.user || ''; $('ghRepo').value = c.repo || ''; $('ghToken').value = '';
@@ -2634,7 +2652,7 @@ function renderPhone() {
       <button type="button" class="icon" data-act="pundo" title="Rückgängig"${undoStack.length ? '' : ' disabled'}>↶</button><span class="sp"></span>
       <button type="button" class="icon" data-act="pshopgh" title="Einkauf importieren" aria-label="Einkauf importieren">${cartIcon}</button>
       <button type="button" class="icon${phoneSearch ? ' on' : ''}" data-act="psearch" title="Suchen" aria-label="Suchen">${searchIcon}</button>${foldBtn}
-      <button type="button" class="icon sync${syncOk() ? '' : ' bad'}" data-act="psync" title="${esc($('fstate').textContent)}" aria-label="Speicherung">☁︎</button>
+      <button type="button" class="icon sync" data-act="psync" title="${esc(syncInfo()[1])}" aria-label="Speicherung">☁︎<i class="sd ${syncInfo()[0]}"></i></button>
       ${phonePreview ? '<button type="button" data-act="pexit" title="Zurück zur PC-Ansicht">PC-Ansicht</button>' : ''}</header>
     ${phoneSearch ? `<div class="psearch"><input type="search" id="pq" placeholder="Suchen …" autocomplete="off" value="${esc(phoneQ)}"><button type="button" class="pqclr" data-act="pqclear" title="Suche löschen" aria-label="Suche löschen">✕</button></div>` : ''}
     <main class="pbody" id="pbody">${content}</main>
