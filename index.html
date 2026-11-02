@@ -1847,7 +1847,7 @@ function renderGroupRows() {
   $('gPieces').innerHTML = G.rows.map((r, i) => `<div class="pc${r.eat ? ' ate' : ''}"><input type="date" data-i="${i}" value="${r.expiry || ''}">${G.canEat ? `<button type="button" class="ic${r.eat ? ' on' : ''}" data-eat="${i}" title="${r.eat ? 'Abhaken zurücknehmen' : 'Dieses Packung abhaken (beim Speichern)'}">✓</button>` : ''}<button type="button" class="ic danger" data-i="${i}" title="Packung löschen">✕</button>${i === 0 ? add : ''}</div>`).join('')
     || `<div class="pc"><span class="hint">Keine Packungen mehr – Speichern löscht den Eintrag hier.</span>${add}</div>`;
 }
-$('gInf').onchange = () => { G.inf = $('gInf').checked && !G.g.copy; if (G.inf && G.rows.length > 1) G.rows.length = 1; renderGroupRows(); };
+$('gInf').onchange = () => { G.inf = $('gInf').checked && !G.g.copy; renderGroupRows(); };
 $('gPieces').oninput = e => { const i = e.target.dataset.i; if (i != null) G.rows[i].expiry = e.target.value || null; };
 $('gPieces').onclick = e => {
   if (!e.target.matches('button')) return;
