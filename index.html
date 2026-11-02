@@ -197,7 +197,6 @@ body.fm-star .chip.std .t::after,body.fm-star .fvn::after{content:" ★";color:v
 /* planned for a day after its expiry date (still fine today): the expiry date is shown bold and red */
 .chip.xplan .d:not(.at),.pr.xplan .pd{color:color-mix(in srgb, var(--danger) 86%, var(--surface));font-weight:600}
 input.chk{width:auto;justify-self:start;margin:0}
-.pc input.est{font-style:italic;color:var(--muted)}
 .opts{display:flex;flex-wrap:wrap;gap:6px 8px;margin:6px 0}
 .opt{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
 .opt:has(input:checked){border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, transparent)}
@@ -631,7 +630,6 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
     <label class="row"><span>Wichtig</span><input type="checkbox" id="aImp" class="chk"></label>
     <label class="row"><span>Unendlich</span><input type="checkbox" id="aInf" class="chk" title="Wegnehmen erzeugt eine Portion (Kopie); die Packungen bleiben, bis du sie abhakst"></label>
     <label class="row"><span>Nicht abhakbar</span><input type="checkbox" id="aNoChk" class="chk" title="Nur verschieben oder löschen"></label>
-    <label class="row" id="aFreshRow"><span>Frisch</span><span><input type="checkbox" id="aFresh" class="chk" title="Frische Ware ohne festes Datum (z. B. Kohlrabi): ohne Datum wird „heute + Tage“ geschätzt"> <input type="number" id="aFreshDays" min="1" max="365" value="7" style="width:56px"> Tage</span></label>
   </div>
   <label class="row" id="aCFoodRow"><span>Lebensmittel</span><span><select id="aCFood"></select> <input type="number" id="aCQty" min="1" max="9" value="1" style="width:60px"> <span id="aCQtyLbl">Stück</span></span></label>
   <label class="row" id="aCInfRow"><span>Unendlich</span><input type="checkbox" id="aCInf" class="chk" title="Bleibt stehen; Ziehen erzeugt einen Container mit Kopien der Inhalte. Enthält nur unendliche Lebensmittel."></label>
@@ -654,7 +652,6 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
     <label class="opt" id="gInfRow"><input type="checkbox" id="gInf" class="chk" title="Wegnehmen erzeugt eine Portion (Kopie); die Packungen bleiben, bis du sie abhakst"><span>Unendlich</span></label>
     <label class="opt" id="gDivRow"><input type="checkbox" id="gDiv" class="chk" title="Mit Alt-Ziehen lassen sich ½, ⅓, ¼ oder ⅕ einer Packung verschieben"><span>Teilbar</span></label>
     <label class="opt" id="gLongRow"><input type="checkbox" id="gLong" class="chk" title="Konserven, Trockenware u. Ä.: Farbwarnung nach Tagen (Menü „Haltbarkeit“) statt nach Wochen"><span>Lange haltbar</span></label>
-    <label class="opt" id="gFreshRow"><input type="checkbox" id="gFresh" class="chk" title="Frische Ware ohne festes Datum (z. B. Kohlrabi): ohne Datum wird „heute + Tage“ geschätzt"><span>Frisch</span><input type="number" id="gFreshDays" min="1" max="365" value="7" style="width:50px" title="geschätzte Haltbarkeit in Tagen"></label>
     <label class="opt" id="gNoChkRow"><input type="checkbox" id="gNoChk" class="chk" title="Nur verschieben oder löschen"><span>Nicht abhakbar</span></label>
   </div>
   <p class="hint" id="gCopyHint" hidden>Entnommene Packung eines unendlichen Lebensmittels: normal abhakbar und verschiebbar. „Unendlich“ und „Nicht abhakbar“ stellst du am Original ein.</p>
@@ -733,9 +730,6 @@ const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const now = () => Date.now();
-// Fresh foods (food.fresh = days, e.g. kohlrabi): without an expiry date a guess "today + days" is entered; the piece is marked piece.est and shown with "~".
-const estDate = f => f && f.fresh ? addDays(today(), f.fresh) : null;
-const estMark = p => p.est ? '~' : '';
 const byExpiry = (a, b) => (a.expiry || '9999') < (b.expiry || '9999') ? -1 : (a.expiry || '9999') > (b.expiry || '9999') ? 1 : 0;
 // Red: expires today or is gone. Normal foods: orange = expires in the planning week, yellow = in the week after (curWeek: includes an early week change).
 // Long-life foods (food.longLife, e.g. tins): orange = within settings.longOrange days, yellow = within settings.longYellow days.
@@ -844,7 +838,7 @@ function validate(x) {
     // warnAt/alarmAt are optional (default 0): orange at count <= warnAt, red at count <= alarmAt.
     // warnAt/alarmAt: orange/red when fewer than n pieces are left; 0 = no warning (default).
     const th = v => Number.isInteger(v) && v >= 0 && v <= 99 ? v : 0, alarmAt = th(f.alarmAt);
-    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}), ...(f.divisible === true && f.infinite !== true ? { divisible: true } : {}), ...(f.longLife === true ? { longLife: true } : {}), ...(f.ack === 'red' || f.ack === 'orange' ? { ack: f.ack } : {}), ...(Number.isInteger(f.fresh) && f.fresh >= 1 && f.fresh <= 365 ? { fresh: f.fresh } : {}) };
+    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}), ...(f.divisible === true && f.infinite !== true ? { divisible: true } : {}), ...(f.longLife === true ? { longLife: true } : {}), ...(f.ack === 'red' || f.ack === 'orange' ? { ack: f.ack } : {}) };
   });
   const foodIds = new Set(d.foods.map(f => f.id));
 
@@ -885,7 +879,7 @@ function validate(x) {
     if (!p || typeof p.id !== 'string' || !p.id) fail(`${w}: Kennung fehlt.`);
     if (!foodIds.has(p.food)) fail(`${w}: Lebensmittel „${p.food}“ gibt es nicht.`);
     if (p.expiry != null && !isDate(p.expiry)) fail(`${w}: Ablaufdatum ist ungültig.`);
-    return { id: p.id, food: p.food, expiry: p.expiry || null, loc: loc(p.loc, w), pos: +p.pos || 0, eaten: eaten(p.eaten, w), updated: +p.updated || 0, ...(p.important === true ? { important: true } : {}), ...(p.copy === true ? { copy: true } : {}), ...(Number.isInteger(p.part) && p.part > 0 && p.part < 60 ? { part: p.part } : {}), ...(p.est === true && p.expiry ? { est: true } : {}) };
+    return { id: p.id, food: p.food, expiry: p.expiry || null, loc: loc(p.loc, w), pos: +p.pos || 0, eaten: eaten(p.eaten, w), updated: +p.updated || 0, ...(p.important === true ? { important: true } : {}), ...(p.copy === true ? { copy: true } : {}), ...(Number.isInteger(p.part) && p.part > 0 && p.part < 60 ? { part: p.part } : {}) };
   });
   // manual: record of a week change done ahead of time (optional), needed to revert it.
   const mv = x.manual, okLoc = l => l && (typeof l.list === 'string' || (isDate(l.date) && l.meal in MEALS));
@@ -1233,8 +1227,7 @@ $('viewSel').onclick = e => { const b = e.target.closest('[data-v]'); if (b) { D
 // A piece that is still fine today but planned for a day after its expiry date: its expiry date is shown bold and red.
 const planExpired = p => !p.eaten && !!p.expiry && !!p.loc.date && p.expiry > today() && p.expiry < p.loc.date;
 // Expiry shown on a card: one date, or the span "09.11.–16.11." when the pieces of the card differ.
-function expRange(ds, est) { const m = est ? '~' : ''; return m + expRange0(ds); }
-function expRange0(ds) { const d = ds.slice().sort(), lo = d[0], hi = d[d.length - 1]; return lo === hi ? fmtShort(lo) : fmtShort(lo) + '–' + fmtShort(hi); }
+function expRange(ds) { const d = ds.slice().sort(), lo = d[0], hi = d[d.length - 1]; return lo === hi ? fmtShort(lo) : fmtShort(lo) + '–' + fmtShort(hi); }
 function groupChip(g, virt) {
   const f = g.food, n = g.pieces.length, dates = g.pieces.map(p => p.expiry).filter(Boolean);
   const cls = g.eaten ? 'eaten' : expClass(g.expiry, g.food);
@@ -1242,7 +1235,7 @@ function groupChip(g, virt) {
   const tip = f.name + (virt ? '\nverplant: ' + at + ' ' + MEALS[g.loc.meal] : '') + (g.pieces.some(planExpired) ? '\nLäuft vor dem geplanten Tag ab' : '') + (dates.length ? '\nAblauf: ' + g.pieces.map(p => p.expiry ? fmtShort(p.expiry) + p.expiry.slice(0, 4) : 'ohne Datum').join(', ') : '');
   const imp = !g.eaten && g.pieces.some(p => p.important), xp = g.pieces.some(planExpired);
   return `<div class="chip ${cls}${imp ? ' imp' : ''}${xp ? ' xplan' : ''}${f.standard ? ' std' : ''}${virt ? ' virt' : ''}" draggable="${!g.eaten}" data-kind="group" data-food="${f.id}" data-loc="${esc(locKey(g.loc))}" data-eaten="${g.eaten ? 1 : 0}" data-copy="${g.copy ? 1 : 0}" data-pos="${g.pos}" title="${esc(tip)}">
-    <span class="t">${esc(f.name)}</span>${virt ? `<span class="n at" title="${esc(at)}">${WD[wday(g.loc.date)]}</span>` : ''}${f.infinite && !g.copy ? '<span class="n" title="unendlich: Portionen ziehen Kopien, die Packungen bleiben">∞</span>' : ''}${g.part ? `<span class="n" title="Teil einer Packung">${partLabel(g.part)}</span>` : ''}${n > 1 ? `<span class="n">×${n}</span>` : ''}${g.expiry && g.expiry < (+today().slice(0, 4) + 1) + today().slice(4) ? `<span class="d"${g.pieces.every(p => p.est || !p.expiry) ? ' title="geschätzt (Frisch)"' : ''}>${expRange(dates, g.pieces.some(p => p.est))}</span>` : ''}
+    <span class="t">${esc(f.name)}</span>${virt ? `<span class="n at" title="${esc(at)}">${WD[wday(g.loc.date)]}</span>` : ''}${f.infinite && !g.copy ? '<span class="n" title="unendlich: Portionen ziehen Kopien, die Packungen bleiben">∞</span>' : ''}${g.part ? `<span class="n" title="Teil einer Packung">${partLabel(g.part)}</span>` : ''}${n > 1 ? `<span class="n">×${n}</span>` : ''}${g.expiry && g.expiry < (+today().slice(0, 4) + 1) + today().slice(4) ? `<span class="d">${expRange(dates)}</span>` : ''}
     ${g.eaten || canEat(g.pieces[0]) ? `<button type="button" class="ck" data-act="eat" title="${g.eaten ? 'Nicht gegessen' : g.loc.list ? 'Eine Packung gegessen' : 'Gegessen'}">${g.eaten ? '↺' : '✓'}</button>` : ''}</div>`;
 }
 
@@ -1357,7 +1350,7 @@ function expiryBox() {
   return `<div class="lst gen${fold.expiry ? ' fold' : ''}" data-gen="expiry">
     <div class="lh"><span class="nm" data-act="foldgen" title="Automatisch erzeugt: alle Packungen mit Ablaufdatum">${fold.expiry ? '▸' : '▾'} Ablauf${expBubble(ps)}</span><span class="cnt">${ps.length}</span></div>
     <div class="lb">${expFilterHtml()}${ps.map(p => `<div class="chip xrow ${expClass(p.expiry, food(p.food))}${p.important ? ' imp' : ''}" data-piece="${p.id}" title="${esc(food(p.food).name + ' · ' + where(p))}">
-      <span class="t">${esc(food(p.food).name)}<small class="pw">${esc(where(p))}</small></span><span class="d">${estMark(p)}${fmtShort(p.expiry) + p.expiry.slice(2, 4)}</span>
+      <span class="t">${esc(food(p.food).name)}<small class="pw">${esc(where(p))}</small></span><span class="d">${fmtShort(p.expiry) + p.expiry.slice(2, 4)}</span>
       ${canEat(p) ? '<button type="button" class="ck" data-act="peat1" title="Gegessen">✓</button>' : ''}</div>`).join('') || '<div class="empty">keine</div>'}</div></div>`;
 }
 // Overview of standard foods (LI-9): a view across all places, not a place itself.
@@ -1746,7 +1739,7 @@ function openAdd(loc, presetFood, inCell, inCont, pickMeal) {
   $('aCInf').checked = $('aCNoChk').checked = false; $('aCQty').value = 1;
   $('aCFood').innerHTML = '<option value="">– keins –</option>' + D.foods.filter(f => f.standard).sort((a, b) => a.name.localeCompare(b.name, 'de')).map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
   $('aName').value = presetFood ? presetFood.name : '';
-  $('aCount').value = 1; $('aImp').checked = false; $('aInf').checked = !!(presetFood && presetFood.infinite); $('aNoChk').checked = !!(presetFood && presetFood.noCheck); $('aFresh').checked = !!(presetFood && presetFood.fresh); $('aFreshDays').value = presetFood && presetFood.fresh || 7; $('aErr').textContent = '';
+  $('aCount').value = 1; $('aImp').checked = false; $('aInf').checked = !!(presetFood && presetFood.infinite); $('aNoChk').checked = !!(presetFood && presetFood.noCheck); $('aErr').textContent = '';
   $('aStd').innerHTML = '<option value="">kein Favorit</option>' + favGroups().map(x => `<option value="${esc(x)}">Favorit · ${esc(x)}</option>`).join('');
   $('aStd').value = presetFood && presetFood.standard ? (presetFood.group || 'Essen') : '';
   $('aSeries').innerHTML = '<option value="">einmalig</option>'; $('aSeries').value = '';
@@ -1816,13 +1809,11 @@ $('addForm').onsubmit = e => {
     if (tc && !tc.infinite && $('aInf').checked) { $('aErr').textContent = 'Ein unendliches Lebensmittel kommt nicht in einen normalen Container; nimm eine Kopie aus der Liste.'; return; }
     if (tc && tc.infinite && !willInf) { $('aErr').textContent = HOLD_MSG; return; }
     let dates = [...$('aDates').querySelectorAll('input')].map(i => i.value || null);
-    const fr = $('aFresh').checked ? Math.max(1, Math.min(365, Math.floor(+$('aFreshDays').value) || 7)) : (f && f.fresh) || 0;
     if (!f) { f = { id: uid(), name, counted: dates.length > 1, standard: !!$('aStd').value, warnAt: 0, alarmAt: 0, group: $('aStd').value || 'Essen', updated: now(), ...(autoLong(dates) ? { longLife: true } : {}) }; D.foods.push(f); }
     else { if ($('aStd').value) { f.standard = true; f.group = $('aStd').value; } if (dates.length > 1) f.counted = true; f.updated = now(); }
     if ($('aInf').checked) f.infinite = true;      // existing food: only switched on here (switching off: in the entry's dialog)
     if ($('aNoChk').checked) f.noCheck = true;
-    if (fr) f.fresh = fr;
-    dates.forEach((x, i) => D.pieces.push({ id: uid(), food: f.id, expiry: x || estDate(f), ...(!x && f.fresh ? { est: true } : {}), loc: { ...loc }, pos: now() + i, eaten: null, updated: now(), ...(asCopy ? { copy: true } : {}), ...($('aImp').checked ? { important: true } : {}) }));
+    dates.forEach((x, i) => D.pieces.push({ id: uid(), food: f.id, expiry: x, loc: { ...loc }, pos: now() + i, eaten: null, updated: now(), ...(asCopy ? { copy: true } : {}), ...($('aImp').checked ? { important: true } : {}) }));
     if (loc.list) renumber(loc);
   }
   $('addDlg').close(); persist(); render();
@@ -1834,7 +1825,7 @@ let G = null;
 function setImp(p, on) { if (!!p.important !== on) { if (on) p.important = true; else delete p.important; p.updated = now(); } }
 function openGroup(g) {
   if (!g) return;
-  G = { g, rows: g.pieces.map(p => ({ id: p.id, expiry: p.expiry, est: !!p.est })) };
+  G = { g, rows: g.pieces.map(p => ({ id: p.id, expiry: p.expiry })) };
   G.inf = !!g.food.infinite && !g.copy;
   G.canEat = g.eaten || canEat(g.pieces[0]); $('gEat').hidden = !G.canEat;
   $('gHead').textContent = g.food.name + ' · ' + (g.loc.list ? list(g.loc.list).name : fmtDay(g.loc.date) + ' ' + MEALS[g.loc.meal]);
@@ -1845,19 +1836,19 @@ function openGroup(g) {
   $('gLoc').innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(''); $('gLoc').value = here;
   $('gFav').innerHTML = '<option value="">kein Favorit</option>' + favGroups().map(x => `<option value="${esc(x)}">Favorit · ${esc(x)}</option>`).join('');
   $('gFav').value = g.food.standard ? (g.food.group || 'Essen') : '';
-  $('gImp').checked = g.pieces.some(p => p.important); $('gInf').checked = !!g.food.infinite; $('gNoChk').checked = !!g.food.noCheck; $('gDiv').checked = !!g.food.divisible; $('gLong').checked = !!g.food.longLife; $('gFresh').checked = !!g.food.fresh; $('gFreshDays').value = g.food.fresh || 7;
-  $('gInfRow').hidden = $('gNoChkRow').hidden = $('gDivRow').hidden = $('gLongRow').hidden = $('gFreshRow').hidden = !!g.copy; $('gCopyHint').hidden = !g.copy;
+  $('gImp').checked = g.pieces.some(p => p.important); $('gInf').checked = !!g.food.infinite; $('gNoChk').checked = !!g.food.noCheck; $('gDiv').checked = !!g.food.divisible; $('gLong').checked = !!g.food.longLife;
+  $('gInfRow').hidden = $('gNoChkRow').hidden = $('gDivRow').hidden = $('gLongRow').hidden = !!g.copy; $('gCopyHint').hidden = !g.copy;
   $('gEat').textContent = g.eaten ? 'Alle zurückholen' : 'Alle abhaken';
   renderGroupRows(); $('grpDlg').showModal();
 }
 function renderGroupRows() {
   // One line per piece (date + ✕); "+" sits right of the first line.
   const add = '<button type="button" class="ic" data-add="1" title="Packung hinzufügen">+</button>';
-  $('gPieces').innerHTML = G.rows.map((r, i) => `<div class="pc${r.eat ? ' ate' : ''}"><input type="date" data-i="${i}" value="${r.expiry || ''}"${r.est ? ' class="est" title="geschätzt (Frisch)"' : ''}>${G.canEat ? `<button type="button" class="ic${r.eat ? ' on' : ''}" data-eat="${i}" title="${r.eat ? 'Abhaken zurücknehmen' : 'Dieses Packung abhaken (beim Speichern)'}">✓</button>` : ''}<button type="button" class="ic danger" data-i="${i}" title="Packung löschen">✕</button>${i === 0 ? add : ''}</div>`).join('')
+  $('gPieces').innerHTML = G.rows.map((r, i) => `<div class="pc${r.eat ? ' ate' : ''}"><input type="date" data-i="${i}" value="${r.expiry || ''}">${G.canEat ? `<button type="button" class="ic${r.eat ? ' on' : ''}" data-eat="${i}" title="${r.eat ? 'Abhaken zurücknehmen' : 'Dieses Packung abhaken (beim Speichern)'}">✓</button>` : ''}<button type="button" class="ic danger" data-i="${i}" title="Packung löschen">✕</button>${i === 0 ? add : ''}</div>`).join('')
     || `<div class="pc"><span class="hint">Keine Packungen mehr – Speichern löscht den Eintrag hier.</span>${add}</div>`;
 }
 $('gInf').onchange = () => { G.inf = $('gInf').checked && !G.g.copy; renderGroupRows(); };
-$('gPieces').oninput = e => { const i = e.target.dataset.i; if (i != null) { G.rows[i].expiry = e.target.value || null; G.rows[i].est = false; e.target.classList.remove('est'); } };
+$('gPieces').oninput = e => { const i = e.target.dataset.i; if (i != null) G.rows[i].expiry = e.target.value || null; };
 $('gPieces').onclick = e => {
   if (!e.target.matches('button')) return;
   if (e.target.dataset.eat != null) { const r = G.rows[+e.target.dataset.eat]; r.eat = !r.eat; }
@@ -1886,7 +1877,6 @@ $('grpForm').onsubmit = e => {
     if ($('gNoChk').checked) f.noCheck = true; else delete f.noCheck;
     if ($('gDiv').checked && !f.infinite) f.divisible = true; else delete f.divisible;
     if ($('gLong').checked) f.longLife = true; else delete f.longLife;
-    if ($('gFresh').checked) f.fresh = Math.max(1, Math.min(365, Math.floor(+$('gFreshDays').value) || 7)); else delete f.fresh;
        if (wasInf && !f.infinite) D.pieces.forEach(p => { if (p.food === f.id) delete p.copy; });   // no copies without an infinite food
   }
   f.name = name; f.standard = !!$('gFav').value; if (f.standard) f.group = $('gFav').value; f.updated = now();
@@ -1895,8 +1885,8 @@ $('grpForm').onsubmit = e => {
   const gone = new Set(G.g.pieces.filter(p => !keepIds.has(p.id)).map(p => p.id));
   D.pieces = D.pieces.filter(p => !gone.has(p.id));
   for (const r of G.rows) {
-    if (r.id) { const p = D.pieces.find(x => x.id === r.id); setImp(p, imp); if (p.expiry !== r.expiry) { p.expiry = r.expiry; delete p.est; p.updated = now(); } if (!p.expiry && f.fresh) { p.expiry = estDate(f); p.est = true; p.updated = now(); } if (r.eat) { p.eaten = p.eaten ? null : today(); p.updated = now(); } }
-    else { const np = { id: uid(), food: f.id, expiry: r.expiry || estDate(f), ...(!r.expiry && f.fresh ? { est: true } : {}), loc: { ...G.g.loc }, pos: G.g.pos, eaten: G.g.eaten !== !!r.eat ? today() : null, updated: now(), ...(G.g.copy && f.infinite ? { copy: true } : {}) }; setImp(np, imp); D.pieces.push(np); }
+    if (r.id) { const p = D.pieces.find(x => x.id === r.id); setImp(p, imp); if (p.expiry !== r.expiry) { p.expiry = r.expiry; p.updated = now(); } if (r.eat) { p.eaten = p.eaten ? null : today(); p.updated = now(); } }
+    else { const np = { id: uid(), food: f.id, expiry: r.expiry, loc: { ...G.g.loc }, pos: G.g.pos, eaten: G.g.eaten !== !!r.eat ? today() : null, updated: now(), ...(G.g.copy && f.infinite ? { copy: true } : {}) }; setImp(np, imp); D.pieces.push(np); }
   }
   if (G.rows.length > 1) f.counted = true;
   // Different list chosen: move all pieces of this entry there.
@@ -2539,7 +2529,7 @@ function applyShop(sh) {
     let f = D.foods.find(x => x.name.toLowerCase() === it.name.toLowerCase());
     if (!f) { f = { id: uid(), name: it.name, counted: it.expiry.length > 1, standard: false, warnAt: 0, alarmAt: 0, group: 'Essen', updated: now(), ...(autoLong(it.expiry) ? { longLife: true } : {}) }; D.foods.push(f); }
     else { if (it.expiry.length > 1) f.counted = true; f.updated = now(); }
-    it.expiry.forEach((x, i) => D.pieces.push({ id: uid(), food: f.id, expiry: x || estDate(f), ...(!x && f.fresh ? { est: true } : {}), loc: { ...loc }, pos: now() + n + i, eaten: null, updated: now() }));
+    it.expiry.forEach((x, i) => D.pieces.push({ id: uid(), food: f.id, expiry: x, loc: { ...loc }, pos: now() + n + i, eaten: null, updated: now() }));
     n += it.expiry.length;
   }
   renumber(loc);
@@ -2602,7 +2592,7 @@ function pieceRow(p, showPlace) {
   return `<div class="pr ${cls}${p.important && !p.eaten ? ' imp' : ''}${planExpired(p) ? ' xplan' : ''}" data-piece="${p.id}">
     ${p.eaten || canEat(p) ? `<button type="button" class="pck" data-act="peat" title="${p.eaten ? 'Nicht gegessen' : 'Gegessen'}">${p.eaten ? '↺' : '✓'}</button>` : '<span class="pck"></span>'}
     <span class="pn">${f.standard ? `<span class="fvn">${esc(f.name)}</span>` : esc(f.name)}${f.infinite && !p.copy ? ' ∞' : ''}${p.part ? ' ' + partLabel(p.part) : ''}${showPlace ? `<small class="pw">${esc(placeName(p.loc))}</small>` : ''}</span>
-    <span class="pd">${p.expiry ? estMark(p) + fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</span></div>`;
+    <span class="pd">${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</span></div>`;
 }
 const piecesAt = (loc, withEaten) => D.pieces.filter(p => locKey(p.loc) === locKey(loc) && (withEaten || !p.eaten))
   .sort((a, b) => !!a.eaten - !!b.eaten || a.pos - b.pos || byExpiry(a, b));
