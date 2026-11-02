@@ -1383,7 +1383,7 @@ function standardOverview(noHead) {
     const lv = favLevel(f), g = f.group || 'Essen';
     // Only one row (one place + date): shown directly in the favourite's line instead of a second line.
     const all = [...rows.values()], one = all[0] || null;   // first place/date row sits in the favourite's own line
-    const cells = ({ p, n }, inHead) => `<td class="w el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}" title="Eintrag öffnen">${esc(where(p))}${n > 1 ? ` ×${n}` : ''}${inHead && lv ? ' · wenig – nachkaufen' : ''}</td><td class="d el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}">${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</td>`;
+    const cells = ({ p, n }, inHead) => `<td class="w el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}" title="Eintrag öffnen">${esc(where(p))}${n > 1 ? ` ×${n}` : ''}</td><td class="d el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}">${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</td>`;
     const tick = r => `<button type="button" class="ic" data-act="feat" data-pid="${r.p.id}" title="Eine Packung abhaken (gegessen)">✓</button>`;
     const head = g !== lastGrp ? grpHead(g) : ''; lastGrp = g;
     return head + `<tbody class="fav${lv ? ' lv-' + lv : ''}" draggable="true" data-fav="${f.id}" data-g="${esc(g)}"${favFold[g] ? ' hidden' : ''}><tr class="fh"><td class="cnt">${ps.length}</td><td class="t"><a href="#" data-act="favedit" data-food="${f.id}" title="Einstellungen: Gruppe, Warnschwellen">${esc(f.name)}</a></td>
