@@ -2853,6 +2853,7 @@ $('phone').addEventListener('click', e => {
     while (h.nextElementSibling && h.nextElementSibling.tagName !== 'H4' && h.nextElementSibling.id !== 'fstate') sec.appendChild(h.nextElementSibling);   // the storage status stays outside the sections
     h.after(sec);
     const name = h.textContent.trim(), set = v => { h.classList.toggle('shut', v); sec.classList.toggle('shut', v); };
+    if (!(name in st)) st[name] = name !== 'Aktionen';   // default: everything folded except "Aktionen"
     set(!!st[name]);
     h.onclick = () => { st[name] = !st[name]; set(st[name]); try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
   }
