@@ -241,6 +241,9 @@ body.phone .stdt td.act .ic,body.phone .stdt td.act .slot{width:24px;margin-left
 .stdt td:last-child{width:1%;white-space:nowrap}
 .stdt tbody.lv-red .t,.stdt tbody.lv-red .w{color:var(--danger)}
 .stdt tbody.lv-orange .t,.stdt tbody.lv-orange .w{color:var(--warnc)}
+.stdt tbody.lv-new{background:color-mix(in srgb,var(--danger) 12%,transparent);box-shadow:inset 3px 0 0 var(--danger)}
+.stdt tbody.lv-new.lv-orange{background:color-mix(in srgb,var(--warnc) 16%,transparent);box-shadow:inset 3px 0 0 var(--warnc)}
+.std-ov .favack{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px;padding:5px 8px;border-radius:6px;background:color-mix(in srgb,var(--danger) 12%,transparent);font-size:12px}
 .stdt .thr{white-space:nowrap}
 .stdt tbody.fgh th{text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);padding:10px 6px 2px;border-bottom:1px solid var(--line)}
 .stdt .t a{color:inherit;text-decoration:underline dotted var(--muted);text-underline-offset:3px}   /* underline does not change the box height */
@@ -835,7 +838,7 @@ function validate(x) {
     // warnAt/alarmAt are optional (default 0): orange at count <= warnAt, red at count <= alarmAt.
     // warnAt/alarmAt: orange/red when fewer than n pieces are left; 0 = no warning (default).
     const th = v => Number.isInteger(v) && v >= 0 && v <= 99 ? v : 0, alarmAt = th(f.alarmAt);
-    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}), ...(f.divisible === true && f.infinite !== true ? { divisible: true } : {}), ...(f.longLife === true ? { longLife: true } : {}) };
+    return { id: f.id, name: str(f.name, w), counted: !!f.counted, standard: !!f.standard, warnAt: Math.max(th(f.warnAt), alarmAt), alarmAt, group: typeof f.group === 'string' && f.group.trim() ? f.group.trim() : 'Essen', favPos: Number.isFinite(f.favPos) ? f.favPos : null, buy: Number.isInteger(f.buy) && f.buy > 0 && f.buy < 100 ? f.buy : 0, updated: +f.updated || 0, ...(f.infinite === true ? { infinite: true } : {}), ...(f.noCheck === true ? { noCheck: true } : {}), ...(f.divisible === true && f.infinite !== true ? { divisible: true } : {}), ...(f.longLife === true ? { longLife: true } : {}), ...(f.ack === 'red' || f.ack === 'orange' ? { ack: f.ack } : {}) };
   });
   const foodIds = new Set(d.foods.map(f => f.id));
 
@@ -914,6 +917,7 @@ function persist(fromUndo) {
   if (!fromUndo && s !== lastSnap) { undoStack.push(lastSnap); if (undoStack.length > 50) undoStack.shift(); }
   lastSnap = s;
   $('undo').disabled = !undoStack.length;
+  for (const f of D.foods) if (f.ack && LV_RANK[favLevel(f)] < LV_RANK[f.ack]) { if (favLevel(f)) f.ack = favLevel(f); else delete f.ack; f.updated = now(); }   // stock recovered: a later low level is new again
   D.saved = now();
   Store.save();
 }
@@ -1354,10 +1358,14 @@ function expiryBox() {
 // Stock level of a favourite: 'red' at or below the red threshold, 'orange' at or below the orange one.
 function favCount(f) { return D.pieces.filter(p => p.food === f.id && live(p)).reduce((n, p) => n + (p.part || 60) / 60, 0); }   // parts count by their share
 function favLevel(f) { if (f.infinite) return ''; const n = favCount(f); return n < (f.alarmAt || 0) ? 'red' : n < (f.warnAt || 0) ? 'orange' : ''; }
+// Low stock the user has not confirmed yet (food.ack = the level confirmed): drives the bubble and the highlighting; a worse level than the confirmed one counts as new.
+const LV_RANK = { '': 0, orange: 1, red: 2 };
+const favNew = f => LV_RANK[favLevel(f)] > LV_RANK[f.ack || ''];
 function favWarn() {
-  const fs = D.foods.filter(f => f.standard);
+  const fs = D.foods.filter(f => f.standard && favNew(f));
   return { red: fs.filter(f => favLevel(f) === 'red'), orange: fs.filter(f => favLevel(f) === 'orange') };
 }
+function favAck() { for (const f of D.foods) if (f.standard && favNew(f)) { f.ack = favLevel(f); f.updated = now(); } persist(); render(); }
 // Favourite groups: managed in the burger menu (settings.favGroups); "Essen" always exists and comes first.
 const favFold = {};   // collapsed favourite groups (view only)
 function favGroups() {
@@ -1374,7 +1382,8 @@ function standardOverview(noHead) {
   const anyOpen = favGroups().some(g => !favFold[g]);
   const h3 = noHead ? '' : `<h3 class="favh">Favoriten<span><button type="button" class="ic" data-act="favfoldall" title="Alle Gruppen zu- bzw. aufklappen">${anyOpen ? '⊟' : '⊞'}</button></span></h3>`;
   // Per favourite a header row (click on the name = settings), then pieces grouped by place and expiry date.
-  return '<div class="std-ov">' + h3 + '<table class="stdt"><thead><tr><th class="cnt">#</th><th>Name</th><th>Wo</th><th>Ablauf</th><th></th></tr></thead>' + order.flatMap(g => { const gf = fs.filter(f => (f.group || 'Essen') === g); return gf.length ? gf : [{ emptyGroup: g }]; }).map(f => {
+  const nn = fs.filter(favNew).length, ack = nn ? `<div class="favack"><span>${nn} neu mit wenig Vorrat</span><button type="button" data-act="favack" title="Bubble bestätigen: bis wieder ein Lebensmittel neu knapp wird">✓ Bestätigen</button></div>` : '';
+  return '<div class="std-ov">' + h3 + ack + '<table class="stdt"><thead><tr><th class="cnt">#</th><th>Name</th><th>Wo</th><th>Ablauf</th><th></th></tr></thead>' + order.flatMap(g => { const gf = fs.filter(f => (f.group || 'Essen') === g); return gf.length ? gf : [{ emptyGroup: g }]; }).map(f => {
     if (f.emptyGroup) { const g = f.emptyGroup; lastGrp = g; return grpHead(g) + `<tbody${favFold[g] ? ' hidden' : ''}><tr class="fp"><td></td><td colspan="4" class="w">keine Favoriten</td></tr></tbody>`; }
     const ps = D.pieces.filter(p => p.food === f.id && live(p)).sort((a, b) => byExpiry(a, b) || (locKey(a.loc) < locKey(b.loc) ? -1 : 1));
     const where = whereShort;
@@ -1386,7 +1395,7 @@ function standardOverview(noHead) {
     const cells = ({ p, n }, inHead) => `<td class="w el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}" title="Eintrag öffnen">${esc(where(p))}${n > 1 ? ` ×${n}` : ''}</td><td class="d el${inHead ? ' ' + expClass(p.expiry, food(p.food)) : ''}" data-act="favrow" data-pid="${p.id}">${p.expiry ? fmtShort(p.expiry) + p.expiry.slice(2, 4) : ''}</td>`;
     const tick = r => `<button type="button" class="ic" data-act="feat" data-pid="${r.p.id}" title="Eine Packung abhaken (gegessen)">✓</button>`;
     const head = g !== lastGrp ? grpHead(g) : ''; lastGrp = g;
-    return head + `<tbody class="fav${lv ? ' lv-' + lv : ''}" draggable="true" data-fav="${f.id}" data-g="${esc(g)}"${favFold[g] ? ' hidden' : ''}><tr class="fh"><td class="cnt">${ps.length}</td><td class="t"><a href="#" data-act="favedit" data-food="${f.id}" title="Einstellungen: Gruppe, Warnschwellen">${esc(f.name)}</a></td>
+    return head + `<tbody class="fav${lv ? ' lv-' + lv : ''}${favNew(f) ? ' lv-new' : ''}" draggable="true" data-fav="${f.id}" data-g="${esc(g)}"${favFold[g] ? ' hidden' : ''}><tr class="fh"><td class="cnt">${ps.length}</td><td class="t"><a href="#" data-act="favedit" data-food="${f.id}" title="Einstellungen: Gruppe, Warnschwellen">${esc(f.name)}</a></td>
       ${one ? cells(one, true) : `<td colspan="2" class="w"></td>`}
       <td class="act">${one ? tick(one) : '<span class="slot"></span>'}<button type="button" class="ic" data-act="restock" data-food="${f.id}" title="Nachgekauft: Packung eintragen">+</button></td></tr>`
       + all.slice(1).map(r => `<tr class="fp ${expClass(r.p.expiry, food(r.p.food))}"><td class="cnt"></td><td></td>${cells(r)}<td class="act">${tick(r)}<span class="slot"></span></td></tr>`).join('')
@@ -2461,6 +2470,7 @@ $('stdPanel').onclick = e => {
   if (a.dataset.act === 'feat') return favEat(a.dataset.pid);
   if (a.dataset.act === 'favrow') { return favOpenRow(a.dataset.pid); }
   if (a.dataset.act === 'favnew') { openNewFav(a.dataset.g); }
+  if (a.dataset.act === 'favack') return favAck();
 };
 // Tick off one piece from the favourites overview (the row's representative piece).
 function favEat(id) { const p = D.pieces.find(x => x.id === id); if (!p) return; p.eaten = today(); p.updated = now(); persist(); render(); }
@@ -2853,6 +2863,7 @@ $('phone').addEventListener('click', e => {
     case 'peat': if (!p.eaten && !canEat(p)) return; p.eaten = p.eaten ? null : today(); p.updated = now(); persist(); return render();   // one piece
     case 'restock': return openAdd({ list: D.settings.restock }, food(a.dataset.food));
     case 'favedit': e.preventDefault(); return openFav(food(a.dataset.food));
+    case 'favack': return favAck();
     case 'favgrp': case 'favfoldall': return favFoldClick(a);
     case 'feat': return favEat(a.dataset.pid);
     case 'favrow': return favOpenRow(a.dataset.pid);
