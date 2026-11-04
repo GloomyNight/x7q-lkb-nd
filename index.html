@@ -157,9 +157,12 @@ body.colresize,body.colresize *{cursor:col-resize!important;user-select:none}
 .lh .cnt{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .lb{padding:4px 6px 6px;min-height:28px}
 .empty{color:var(--muted);font-size:12px;padding:2px 4px}
-.lsearch{padding:8px 8px 6px;border-bottom:1px solid var(--line)}
+.lsearch{padding:8px 8px 6px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.lsearch .sday{display:inline-flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer;color:var(--muted)}
+.lsearch .sday input{width:auto;margin:0}
+.lsearch #listSearch{flex:1;min-width:0}
 .lsearch input{width:100%;box-sizing:border-box;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:inherit;font:inherit}
-#lists .srch-hide,#grid .al .srch-hide{display:none !important}
+#lists .srch-hide,#grid .al .srch-hide,#grid .cell .srch-hide{display:none !important}
 .srch-none{color:var(--muted);font-size:12px;padding:8px}
 .dropzone{outline:2px dashed var(--accent);outline-offset:-2px}
 .lst.dropzone{outline-offset:2px}
@@ -533,7 +536,7 @@ body.phone dialog .btns{order:-1;margin:0 0 12px;position:sticky;top:0;z-index:2
 <div class="main">
   <section class="card" id="calcard"><div class="scroll"><div class="grid" id="grid"></div></div></section>
   <div class="colsplit" id="colSplit" title="Ziehen: Breite der Listenspalte ändern"></div>
-  <section class="card"><div class="calbox" id="calBox" hidden></div><div class="lsearch"><input type="search" id="listSearch" placeholder="Suchen …" autocomplete="off" title="Blendet alle Einträge aus, die nicht passen (Esc löscht)"></div><div class="scroll" id="lists"></div></section>
+  <section class="card"><div class="calbox" id="calBox" hidden></div><div class="lsearch"><input type="search" id="listSearch" placeholder="Suchen …" autocomplete="off" title="Blendet alle Einträge aus, die nicht passen (Esc löscht)"><label class="sday" title="Die Suche auch auf die Tage im Kalender anwenden"><input type="checkbox" id="searchDays"> Tage</label></div><div class="scroll" id="lists"></div></section>
 </div>
 
 <div id="phone"></div>
@@ -893,7 +896,7 @@ function validate(x) {
   const lw = Number.isInteger(s.listWidth) && s.listWidth >= 200 && s.listWidth <= 900 ? s.listWidth : 300;
   const addMode = s.addMode === 'date' ? 'date' : 'cell';   // optional, default: "+" in the cell
   const marks = ['semi', 'dark', 'dotted', 'accent', 'caps', 'star'];
-  d.settings = { addMode, favMark: marks.includes(s.favMark) ? s.favMark : 'semi', listWidth: lw, favGroups: fg.includes('Essen') ? fg : ['Essen'].concat(fg), fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 80 && s.fontSize <= 140 && s.fontSize % 5 === 0 ? s.fontSize : 100, theme: s.theme === 'blue' ? 'blue' : 'standard', view: s.view === 'today' ? 'today' : 'week', layout: s.layout === 'columns' ? 'columns' : 'agenda', hidePast: s.hidePast === true, minRows: Number.isInteger(s.minRows) && s.minRows >= 1 && s.minRows <= 6 ? s.minRows : 2, longAuto: Number.isInteger(s.longAuto) && s.longAuto >= 0 && s.longAuto <= 60 ? s.longAuto : 4, longOrange: Number.isInteger(s.longOrange) && s.longOrange >= 1 && s.longOrange <= 999 ? s.longOrange : 30, expShow: s.expShow === 'short' || s.expShow === 'long' ? s.expShow : 'both', longYellow: Number.isInteger(s.longYellow) && s.longYellow >= 1 && s.longYellow <= 999 ? s.longYellow : 60, restock: listIds.has(s.restock) ? s.restock : d.lists.find(l => l.kind === 'custom')?.id || 'thisWeekLunch' };
+  d.settings = { searchDays: s.searchDays === true, addMode, favMark: marks.includes(s.favMark) ? s.favMark : 'semi', listWidth: lw, favGroups: fg.includes('Essen') ? fg : ['Essen'].concat(fg), fontSize: Number.isInteger(s.fontSize) && s.fontSize >= 80 && s.fontSize <= 140 && s.fontSize % 5 === 0 ? s.fontSize : 100, theme: s.theme === 'blue' ? 'blue' : 'standard', view: s.view === 'today' ? 'today' : 'week', layout: s.layout === 'columns' ? 'columns' : 'agenda', hidePast: s.hidePast === true, minRows: Number.isInteger(s.minRows) && s.minRows >= 1 && s.minRows <= 6 ? s.minRows : 2, longAuto: Number.isInteger(s.longAuto) && s.longAuto >= 0 && s.longAuto <= 60 ? s.longAuto : 4, longOrange: Number.isInteger(s.longOrange) && s.longOrange >= 1 && s.longOrange <= 999 ? s.longOrange : 30, expShow: s.expShow === 'short' || s.expShow === 'long' ? s.expShow : 'both', longYellow: Number.isInteger(s.longYellow) && s.longYellow >= 1 && s.longYellow <= 999 ? s.longYellow : 60, restock: listIds.has(s.restock) ? s.restock : d.lists.find(l => l.kind === 'custom')?.id || 'thisWeekLunch' };
   return d;
 }
 
@@ -1303,6 +1306,7 @@ function renderLists() {
   // The generated list "Ablauf" always sits at the very bottom, slightly apart from the normal lists.
   $('lists').innerHTML = order.map(l => listBox(l)).join('')
     + '<div class="gensep"></div>' + expiryBox();
+  $('searchDays').checked = !!D.settings.searchDays;
   applyListSearch();
   // Standard foods: overview in the toolbar panel, red dot on the star when one is empty.
   $('stdPanel').innerHTML = standardOverview();
@@ -1313,17 +1317,19 @@ function renderLists() {
   $('stdBtn').title = 'Favoriten' + (fw.red.length ? ' – nachkaufen: ' + fw.red.map(f => f.name).join(', ') : '') + (fw.orange.length ? ' – bald: ' + fw.orange.map(f => f.name).join(', ') : '');
 }
 // Search above the lists: chips whose name does not match are hidden, lists without a matching chip too.
-// Also applies to the week/weekend lists below the days (layout B); the days themselves are not filtered.
+// Also applies to the week/weekend lists below the days (layout B); the days themselves only with the checkbox "Tage" (settings.searchDays).
 // The generated list "Ablauf" is hidden while searching (it only duplicates the other lists).
 function applyListSearch() {
+  $('searchDays').checked = !!D.settings.searchDays;
   const q = $('listSearch').value.trim().toLowerCase(), root = $('lists');
   document.querySelectorAll('.srch-hide').forEach(e => e.classList.remove('srch-hide'));
   root.querySelectorAll('.srch-none').forEach(e => e.remove());
   if (!q) return;
   const hit = c => c.querySelector('.t').firstChild.textContent.toLowerCase().includes(q);
-  document.querySelectorAll('#lists .lst:not(.gen) .chip, #grid .al .chip').forEach(c => { if (!hit(c)) c.classList.add('srch-hide'); });
+  const days = !!D.settings.searchDays;
+  document.querySelectorAll('#lists .lst:not(.gen) .chip, #grid .al .chip' + (days ? ', #grid .cell:not(.shut) .chip' : '')).forEach(c => { if (!hit(c)) c.classList.add('srch-hide'); });
   // containers: shown only if one of their entries matches or the container's own name does (a nameless container never matches by itself)
-  document.querySelectorAll('#lists .lst:not(.gen) .cont, #grid .al .cont').forEach(c => {
+  document.querySelectorAll('#lists .lst:not(.gen) .cont, #grid .al .cont' + (days ? ', #grid .cell:not(.shut) .cont' : '')).forEach(c => {
     const nm = ((c.querySelector('.ct span') || {}).firstChild || { textContent: '' }).textContent.trim().toLowerCase();
     if (!c.querySelector('.chip:not(.srch-hide)') && !(nm && nm.includes(q))) c.classList.add('srch-hide');
   });
@@ -1337,6 +1343,7 @@ function applyListSearch() {
 // After a move the search is over: the field is emptied so everything is visible again.
 function clearSearch() { if ($('listSearch').value) $('listSearch').value = ''; }
 $('listSearch').oninput = applyListSearch;
+$('searchDays').onchange = e => { D.settings.searchDays = e.target.checked; persist(); applyListSearch(); };
 $('listSearch').onkeydown = e => { if (e.key === 'Escape') { e.target.value = ''; applyListSearch(); } };
 // Generated list "Ablauf": every uneaten piece with an expiry date, one row each, sorted by date (H-1).
 // Filter of the list (D.settings.expShow): only short-life, only long-life (food.longLife) or both.
