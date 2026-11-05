@@ -915,7 +915,19 @@ function undo() {
   const s = JSON.parse(lastSnap); s.settings = D.settings; D = s;
   persist(true); render();
 }
+// Parts of one pack that meet again (same food, expiry date and place) grow back together; 60/60 is a whole pack again.
+function mergeParts() {
+  const open = new Map(), gone = new Set();
+  for (const p of D.pieces) {
+    if (!p.part || p.eaten) continue;
+    const k = [p.food, p.expiry || '', locKey(p.loc), !!p.copy, !!p.important].join('|'), t = open.get(k);
+    if (t && t.part + p.part <= 60) { t.part += p.part; t.updated = now(); gone.add(p.id); if (t.part === 60) { delete t.part; open.delete(k); } }
+    else open.set(k, p);
+  }
+  if (gone.size) D.pieces = D.pieces.filter(p => !gone.has(p.id));
+}
 function persist(fromUndo) {
+  if (!fromUndo) mergeParts();
   const s = snapshot();
   if (!fromUndo && s !== lastSnap) { undoStack.push(lastSnap); if (undoStack.length > 50) undoStack.shift(); }
   lastSnap = s;
