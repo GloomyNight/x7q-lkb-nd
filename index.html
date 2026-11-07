@@ -902,6 +902,7 @@ function validate(x) {
 
 let D = defaults();
 try { const s = JSON.parse(localStorage.getItem(LS)); if (s) D = validate(s); } catch (e) { console.warn('localStorage', e); }
+let userSaved = D.saved;   // time of the last real edit; maintain() (week change, clean-up) also bumps D.saved and must not make a stale device look newer than GitHub
 let weekOffset = 0;            // -1 last week (review), 0 this week, 1 next week
 const fold = {};                // collapsed lists (view only)
 
@@ -933,7 +934,7 @@ function persist(fromUndo) {
   lastSnap = s;
   $('undo').disabled = !undoStack.length;
   for (const f of D.foods) if (f.ack && LV_RANK[favLevel(f)] < LV_RANK[f.ack]) { if (favLevel(f)) f.ack = favLevel(f); else delete f.ack; f.updated = now(); }   // stock recovered: a later low level is new again
-  D.saved = now();
+  D.saved = userSaved = now();
   Store.save();
 }
 
@@ -2199,7 +2200,7 @@ const Store = {
   },
   // Replace the plan by the one read from GitHub.
   ghTake(r) {
-    D = validate(JSON.parse(r.text)); GH.sha = r.sha; GH.synced = D.saved; GH.at = Date.now(); lastSnap = snapshot(); undoStack.length = 0;
+    D = validate(JSON.parse(r.text)); userSaved = D.saved; GH.sha = r.sha; GH.synced = D.saved; GH.at = Date.now(); lastSnap = snapshot(); undoStack.length = 0;
     try { localStorage.setItem(LS, JSON.stringify(D)); } catch (e) {}
     render();
   },
@@ -2243,8 +2244,8 @@ const Store = {
         GH.sha = null; await upload();
       } else {
         const remote = validate(JSON.parse(r.text));
-        if (first && remote.saved <= D.saved && !confirm(`Auf GitHub liegt bereits ein Plan (Stand ${new Date(remote.saved).toLocaleString('de-DE')}), der nicht neuer ist als der in diesem Browser (${D.saved ? new Date(D.saved).toLocaleString('de-DE') : 'leer'}).\n\nOK: GitHub-Stand laden.\nAbbrechen: Plan aus diesem Browser hochladen (überschreibt GitHub).`)) { GH.sha = r.sha; await upload(); }
-        else if (remote.saved > D.saved || first) this.ghTake(r);
+        if (first && remote.saved <= userSaved && !confirm(`Auf GitHub liegt bereits ein Plan (Stand ${new Date(remote.saved).toLocaleString('de-DE')}), der nicht neuer ist als der in diesem Browser (${userSaved ? new Date(userSaved).toLocaleString('de-DE') : 'leer'}).\n\nOK: GitHub-Stand laden.\nAbbrechen: Plan aus diesem Browser hochladen (überschreibt GitHub).`)) { GH.sha = r.sha; await upload(); }
+        else if (remote.saved > userSaved || first) this.ghTake(r);
         else { GH.sha = r.sha; if (D.saved > remote.saved) await upload(); else GH.synced = D.saved; }
       }
       this.gh = true; GH.ok = true; setFState(); return true;
